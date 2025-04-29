@@ -27,7 +27,7 @@
 ```bash
 git clone https://github.com/<your-org>/<your-repo>.git
 cd <your-repo>
-
+```bash
 **Крок 2 — створити віртуальне середовище і встановити залежності**
 
 python -m venv .venv
