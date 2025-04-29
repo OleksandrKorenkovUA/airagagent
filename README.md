@@ -23,18 +23,18 @@
 
 ## Клонування та локальний запуск
 
-# Крок 1 — клонувати репозиторій**  
+### Крок 1 — клонувати репозиторій**  
 git clone https://github.com/<your-org>/<your-repo>.git
 cd <your-repo>
 
-# Крок 2 — створити віртуальне середовище і встановити залежності**
+### Крок 2 — створити віртуальне середовище і встановити залежності**
 
 python -m venv .venv
 source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 
 
-# Крок 3 — запустити Milvus (Docker Compose)**
+### Крок 3 — запустити Milvus (Docker Compose)**
 
 **Інструкції для macOS, Windows і Linux однакові: завантажте готовий docker-compose.yml, підніміть сервіс і перевірте стан.**
 
@@ -43,14 +43,14 @@ curl -L https://github.com/milvus-io/milvus/releases/download/v2.3.21/milvus-sta
 docker compose up -d
 docker compose ps        # має з’явитися milvus-standalone running
 
-# Крок 4 — (необов’язково) встановити Attu GUI для Milvus
+### Крок 4 — (необов’язково) встановити Attu GUI для Milvus
 
 **Завантажте Attu Desktop із сайту Milvus, запустіть і створіть підключення до http://127.0.0.1:19530.
 Далі ви зможете оглядати колекції, додавати документи вручну та виконувати запити візуально.**
 
 milvus.io
 
-# Крок 5 — встановити Ollama
+### Крок 5 — встановити Ollama
 
 **macOS — завантажте .dmg із сайту й перетягніть у Applications.** 
 
@@ -65,13 +65,13 @@ curl -fsSL https://ollama.com/install.sh | sh
 ollama pull gemma3:4b
 ollama pull INSAIT-Institute/MamayLM-Gemma-2-9B-IT-v0.1   # українськомовна
 
-# Крок 6 — запустити Streamlit-додаток
+### Крок 6 — запустити Streamlit-додаток
 
 streamlit run app.py
 
 Відкрийте http://localhost:8501 у браузері.
 
-# Використання
+### Використання
 
 Після старту в боковій панелі введіть назву колекції (якщо вона не існує, код створить її автоматично). Оберіть режим:
 
@@ -87,16 +87,16 @@ streamlit run app.py
 
 Запити проходять через HybridRetriever, який об’єднує BM25 та dense-вектори BGE-M3, після чого LLM (Gemma 3 або MamayLM-Gemma) формує відповідь з посиланням на знайдений контекст.
 
-# Корисні команди Milvus / Docker
+### Корисні команди Milvus / Docker
 
 docker compose logs milvus-standalone      # перегляд логів
 docker compose stop && docker compose rm   # зупинка та видалення контейнерів
 
-# Оновлення та резервне копіювання
+### Оновлення та резервне копіювання
 
 Milvus зберігає дані в томах volumes/; для резервної копії достатньо скопіювати папку milvus_standalone_data. При оновленні версії Milvus замініть docker-compose.yml на свіжий, збережіть томи і перезапустіть контейнери.
 
-# Поширені помилки
+### Поширені помилки
 
 Connection refused :19530 — контейнер Milvus не запущений або порт зайнятий. Переконайтеся, що docker compose ps показує running.
 
