@@ -96,3 +96,4 @@ CUDA не знайдено — Ollama спробує використати GPU;
 
 KeyError context під час чату — переконайтеся, що функція create_prompt() у коді використовує змінні {context} і {question}.
 
+```bash
