@@ -24,10 +24,9 @@
 ## Клонування та локальний запуск
 
 **Крок 1 — клонувати репозиторій**  
-```bash
 git clone https://github.com/<your-org>/<your-repo>.git
 cd <your-repo>
-```bash
+
 **Крок 2 — створити віртуальне середовище і встановити залежності**
 
 python -m venv .venv
@@ -96,3 +95,4 @@ Connection refused :19530 — контейнер Milvus не запущений 
 CUDA не знайдено — Ollama спробує використати GPU; якщо ви на CPU-машині, ігноруйте попередження або вимкніть GPU-режим.
 
 KeyError context під час чату — переконайтеся, що функція create_prompt() у коді використовує змінні {context} і {question}.
+
