@@ -25,15 +25,15 @@
 
 ### Крок 1 — клонувати репозиторій**
 
-<pre> git clone https://github.com/OleksandrKorenkovUA/airagagent </pre>
-<pre> cd airagagent </pre>
+<pre> git clone https://github.com/OleksandrKorenkovUA/airagagent
+     cd airagagent </pre>
 
 ### Крок 2 — створити віртуальне середовище і встановити залежності**
 
+<pre> 
 python -m venv .venv
-
 source .venv/bin/activate 
-
+</pre>
 Для Windows PowerShell спочатку встановлення python через Start-Process "https://www.python.org/downloads/windows/" 
 
 # Windows: .venv\Scripts\activate
