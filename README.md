@@ -129,11 +129,45 @@ ollama pull INSAIT-Institute/MamayLM-Gemma-2-9B-IT-v0.1   # українсько
 # або для zsh:
 pip install pymilvus\[model\]</pre>
 
-### Крок 7 — запустити Streamlit-додаток
+### Крок 7 - встановлення ffmpeg
 
-<pre>streamlit run app.py
+Якщо у вас не встановленно ffmpeg (для Windows), зайдіть на офіційний сайт зі статичними збірками, наприклад:
 
-Відкрийте http://localhost:8501 у браузері.</pre>
+(https://www.gyan.dev/ffmpeg/builds/) (розділ “essentials”)
+
+або
+
+(https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip)
+
+Скачайте ZIP-архів “ffmpeg-release-essentials.zip”. Розпакуйте архів у корінь диска, наприклад в папку:
+
+<pre>C:\ffmpeg</pre>
+
+Перейдіть у теку C:\ffmpeg\bin – там мають бути файли ffmpeg.exe, ffprobe.exe тощо. Додайте цю теку в системний PATH. Натисніть Win+R, введіть sysdm.cpl і ОК. У вкладці “Додатково” натисніть “Змінні середовища…”.
+У розділі “Змінні користувача” або “Системні змінні” знайдіть рядок Path → “Змінити…”.
+
+Додайте новий рядок із шляхом:
+
+<pre>C:\ffmpeg\bin</pre>
+
+Підтвердіть усі діалоги та перезапустіть PowerShell. Перевірте в консолі:
+<pre>ffmpeg -version</pre>
+
+Якщо все гаразд, ви побачите інформацію про версію ffmpeg.
+
+**Для Linux (Debian/Ubuntu)**
+
+<pre>sudo apt update && sudo apt install ffmpeg</pre>
+
+**Для macOS**
+
+<pre>brew install ffmpeg</pre>
+
+### Крок 8 — запустити Streamlit-додаток
+
+<pre>streamlit run app.py</pre>
+
+Відкрийте http://localhost:8501 у браузері.
 
 ### Треба почекати
 
