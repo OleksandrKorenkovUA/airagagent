@@ -1,5 +1,3 @@
-import json  # Імпорт модуля для роботи з JSON-даними
-
 
 ''' Приклад взято звідси - https://milvus.io/docs/full_text_search_with_milvus.md '''
 

@@ -94,6 +94,16 @@ if 'document_context_text' not in st.session_state:
 if 'audio_context_text' not in st.session_state:
     st.session_state.audio_context_text = {'context': ''}  # Зберігає контекст для аудіо
 
+if 'video_summary' not in st.session_state:
+    st.session_state.video_summary = False  # Прапорець відображення узагальненої інформації
+if 'audio_summary' not in st.session_state:
+    st.session_state.audio_summary = False  # Прапорець відображення узагальненої інформації
+if 'image_summary' not in st.session_state:
+    st.session_state.image_summary = False  # Прапорець відображення узагальненої інформації
+if 'document_summary' not in st.session_state:
+    st.session_state.document_summary = False  # Прапорець відображення узагальненої інформації
+
+
 
 def select_database():
     """Функція для вибору бази даних та скидання інших станів.
@@ -121,6 +131,8 @@ def select_document():
     st.session_state.start_chat = False  # Скидання прапорця початку чату
     st.session_state.database_selected = False  # Скидання прапорця вибору бази даних
     st.session_state.document_processed = False  # Скидання прапорця обробки документа
+    st.session_state.audio_selected = False  # Скидання прапорця обробки аудіо
+  # Скидання прапорця обробки зображення
 
 def select_video():
     """Функція для вибору режиму роботи з відео.
@@ -134,7 +146,8 @@ def select_video():
     st.session_state.image_selected = False  # Скидання прапорця вибору зображення
     st.session_state.start_chat = False  # Скидання прапорця початку чату
     st.session_state.database_selected = False  # Скидання прапорця вибору бази даних
-    st.session_state.video_processed = False  # Скидання прапорця обробки відео
+    st.session_state.video_processed = False 
+    st.session_state.audio_selected = False  # Скидання прапорця обробки аудіо
 
 def select_image():
     """Функція для вибору режиму роботи з зображеннями.
@@ -148,7 +161,8 @@ def select_image():
     st.session_state.image_selected = True  # Встановлення прапорця вибору зображення
     st.session_state.start_chat = False  # Скидання прапорця початку чату
     st.session_state.database_selected = False  # Скидання прапорця вибору бази даних
-    st.session_state.image_processed = False  # Скидання прапорця обробки зображення
+    st.session_state.image_processed = False
+    st.session_state.audio_selected  # Скидання прапорця обробки зображення
 
 def select_audio():
     """Функція для вибору режиму роботи з аудіо.
@@ -178,6 +192,7 @@ def start_chat():
     st.session_state.video_selected = False  # Скидання прапорця вибору відео
     st.session_state.image_selected = False  # Скидання прапорця вибору зображення
     st.session_state.database_selected = False  # Скидання прапорця вибору бази даних
+    st.session_state.audio_selected = False  # Скидання прапорця вибору аудіо
 
 def stop_chat():
     """Функція для зупинки режиму чату.
@@ -260,7 +275,6 @@ if st.session_state.start_chat:
     if "messages" not in st.session_state: st.session_state.messages = []  # Ініціалізація повідомлень
     collection_name = st.session_state.collection_name  # Отримання назви колекції
     st.session_state.current_mode = "chat"  # Встановлення режиму чату
-    greet_once("Хелло. Що вас цікавить?")  # Відображення привітання
 
     # Якщо чат тільки що запущений, відправляємо привітання
     if not st.session_state.messages:
@@ -337,7 +351,14 @@ if st.session_state.document_selected:
 
     if st.session_state.doc_mode == "view":  # Якщо режим перегляду документа
         st.title("Робота з документами")  # Заголовок
-        document_mode(collection_name)  # Виклик функції обробки документа
+        st.button(
+                    "Узагальнити інформацію",
+                    on_click=on_summarise_document,
+                    # Оновлення режиму
+                    key="summary_document",  # Ключ кнопки
+                )# Заголовок
+        st.markdown(f"Узагальнити інформацію: {st.session_state.document_summary}")
+        document_mode(collection_name, st.session_state.document_summary)  # Виклик функції обробки документа
         if st.session_state.document_processed:  # Якщо документ оброблений
             st.button(
                 "Почати чат",  # Кнопка для початку чату
@@ -346,8 +367,6 @@ if st.session_state.document_selected:
             )
 
     elif st.session_state.doc_mode == "chat":  # Якщо режим чату з документом
-        st.markdown(st.session_state.document_context_text.get("context",
-        "Контекст ещё не сгенерирован. Сначала обработайте файл."))  # Відображення контексту
         chat_document_mode(collection_name, st.session_state.llm_option)  # Виклик функції чату з документом
         st.button("Новий документ", on_click=lambda: st.session_state.update(doc_mode="view"), key="new_doc",)  # Кнопка для нового документа
         
@@ -357,8 +376,15 @@ if st.session_state.video_selected:
     collection_name = st.session_state.collection_name  # Отримання назви колекції
     st.session_state.mode = st.session_state.current_mode  # Встановлення режиму
     if st.session_state.video_mode == "view":  # Якщо режим перегляду відео
-        st.title('Робота з відео')  # Заголовок
-        video_mode(collection_name, summary = False)  # Виклик функції обробки відео
+        st.title('Робота з відео')
+        st.button(
+                    "Узагальнити інформацію",
+                    on_click=on_summarise_video,
+                    # Оновлення режиму
+                    key="summary_video",  # Ключ кнопки
+                )# Заголовок
+        st.markdown(f"Узагальнити інформацію: {st.session_state.video_summary}")
+        video_mode(collection_name, summary = st.session_state.video_summary)  # Виклик функції обробки відео
         if st.session_state.video_processed:  # Якщо відео оброблене
             st.button(
                     "Почати чат",  # Кнопка для початку чату
@@ -367,8 +393,6 @@ if st.session_state.video_selected:
                 )
 
     elif st.session_state.video_mode == "chat":  # Якщо режим чату з відео
-        st.markdown(st.session_state.video_context_text.get("context",
-        "Контекст ещё не сгенерирован. Сначала обработайте файл."))  # Відображення контексту
         chat_video_mode(collection_name, st.session_state.llm_option)  # Виклик функції чату з відео
         st.button("Нове відео", on_click=lambda: st.session_state.update(video_mode="view"), key="new_video",)  # Кнопка для нового відео
 
@@ -380,7 +404,14 @@ if st.session_state.image_selected:
     st.session_state.mode = st.session_state.current_mode
     if st.session_state.image_mode == "view":
         st.title('Робота з зображеннями')
-        image_mode(collection_name, summary = False)
+        st.button(
+                    "Узагальнити інформацію",
+                    on_click=on_summarise_image,
+                    # Оновлення режиму
+                    key="summary_image",  # Ключ кнопки
+                )# Заголовок
+        st.markdown(f"Узагальнити інформацію: {st.session_state.image_summary}")
+        image_mode(collection_name, st.session_state.image_summary)
         if st.session_state.image_processed:
                 st.button(
                     "Почати чат",
@@ -388,9 +419,6 @@ if st.session_state.image_selected:
                     key="start_image_chat",
                 )
     elif st.session_state.image_mode == "chat":
-        st.markdown(st.session_state.image_context_text.get(
-        "context",
-        "Контекст ещё не сгенерирован. Сначала обработайте файл."))
         chat_image_mode(collection_name, st.session_state.llm_option)
         st.button("Нове зображення", on_click=lambda: st.session_state.update(image_mode="view"), key="new_image",)
         
@@ -401,7 +429,14 @@ if st.session_state.audio_selected:
     st.session_state.mode = st.session_state.current_mode
     if st.session_state.audio_mode == "view":
         st.title('Робота з аудіо')
-        audio_mode(collection_name, summary = False)
+        st.button(
+                    "Узагальнити інформацію",
+                    on_click=on_summarise_audio,
+                    # Оновлення режиму
+                    key="summary_audio",  # Ключ кнопки
+                )# Заголовок
+        st.markdown(f"Узагальнити інформацію: {st.session_state.audio_summary}")
+        audio_mode(collection_name, st.session_state.audio_summary)
         if st.session_state.audio_processed:
                 st.button(
                     "Почати чат",
@@ -409,9 +444,6 @@ if st.session_state.audio_selected:
                     key="start_audio_chat",
                 )
     elif st.session_state.audio_mode == "chat":
-        st.markdown(st.session_state.audio_context_text.get(
-        "context",
-        "Контекст ещё не сгенерирован. Сначала обработайте файл."))
         chat_audio_mode(collection_name, st.session_state.llm_option)
         st.button("Нове аудіо", on_click=lambda: st.session_state.update(audio_mode="view"), key="new_audio",)
 

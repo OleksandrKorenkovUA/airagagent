@@ -91,7 +91,6 @@ def rerank_search(documents, query, limit=10):
     reranked_results = bge_rf(query, documents)  # Переранжування результатів
     return reranked_results
 
-
 def create_prompt(system_prompt):
     """Створює шаблон промпту для чат-моделі з системним промптом та місцями для контексту і питання"""
     return ChatPromptTemplate.from_messages([
@@ -720,6 +719,8 @@ def audio_mode(collection_name: str, summary: bool):
 
 
 def chat_audio_mode(collection_name, llm_option):
+    if st.session_state.audio_context_text['context']:
+        st.markdown(st.session_state.audio_context_text['context'])
     if not st.session_state.messages:
         st.session_state.messages.append({"role": "assistant", "content": "Привіт! Я готовий до розмови. Що вас цікавить?"})
          
@@ -742,12 +743,17 @@ def chat_audio_mode(collection_name, llm_option):
             ctx = "\n---\n".join([c["content"] for c in chunks]) if chunks else ""
             user_query = q+"\n---\n"+ctx
             if llm_option == "Україномовну":
-                chat = [
-                    {"role": "system", "content": "You are useful assistant. Use the info to answer user query. Answer in Ukrainian"},
-                    {"role": "user", "content": user_query}
-                    ]
-                response = st.session_state.ukr_generator(chat, max_new_tokens=512)
-                answer = response[0]["generated_text"][-1]["content"]
+                    # Формуємо єдиний рядок для генерації
+                    system = UKR_SYSTEM_PROMPT
+                    prompt_text = system + "\n\n" + user_query
+                    # Викликаємо HuggingFace pipeline, який очікує рядок
+                    gen = st.session_state.ukr_generator(
+                        prompt_text,
+                        max_new_tokens=512,
+                        do_sample=False
+                    )
+                    # Результат — список з одним словником із ключем "generated_text"
+                    answer = gen[0]["generated_text"]
             else:   
                 llm = create_llm("gemma3:4b")
                 chain = create_chain(llm, create_prompt(REGULAR_SYSTEM_PROMPT))
@@ -770,6 +776,7 @@ def chat_audio_mode(collection_name, llm_option):
 
 
 def video_mode(collection_name, summary):
+    print('Summary in video mode', summary)
     url = st.text_input("Введіть URL відео")
     model_size = st.selectbox("Модель Whisper:", ["tiny", "base", "small", "medium", "large"], index=1)
     if url and st.button("Обробити"):
@@ -791,9 +798,10 @@ def video_mode(collection_name, summary):
         }
         st.markdown(txt)
         txt = prepare_text(txt)
-        if summary and not st.session_state.video_context_text['context']:
+        if st.session_state.video_summary and not st.session_state.video_context_text['context']:
             llm = create_llm("gemma3:4b")
-            summary  = summarise_transcript(txt, llm)
+            summary = summarise_transcript(txt, llm)
+            st.session_state.video_context_text['context'] = summary
             print(summary, 'summary')
             st.session_state.video_context_text['context'] = summary
         video_json = build_video_json(txt, video_meta, file_path, safe)
@@ -826,6 +834,8 @@ def video_mode(collection_name, summary):
         st.session_state.video_processed = True
 
 def chat_video_mode(collection_name, llm_option):
+    if st.session_state.video_context_text['context']:
+        st.markdown(st.session_state.video_context_text['context'])
     if not st.session_state.messages:
         st.session_state.messages.append({"role": "assistant", "content": "Привіт! Я готовий до розмови. Що вас цікавить?"})
          
@@ -847,13 +857,25 @@ def chat_video_mode(collection_name, llm_option):
             chunks = retr.search(q, mode="hybrid", k=5)
             ctx = "\n---\n".join([c["content"] for c in chunks]) if chunks else ""
             user_query = q+"\n---\n"+ctx
+            #if llm_option == "Україномовну":
+            #    chat = [
+            #        {"role": "system", "content": "You are useful assistant. Use the info to answer user query. Answer in Ukrainian"},
+            #        {"role": "user", "content": user_query}
+            #        ]
+            #    response = st.session_state.ukr_generator(chat, max_new_tokens=512)
+            #    answer = response[0]["generated_text"][-1]["content"]
             if llm_option == "Україномовну":
-                chat = [
-                    {"role": "system", "content": "You are useful assistant. Use the info to answer user query. Answer in Ukrainian"},
-                    {"role": "user", "content": user_query}
-                    ]
-                response = st.session_state.ukr_generator(chat, max_new_tokens=512)
-                answer = response[0]["generated_text"][-1]["content"]
+                    # Формуємо єдиний рядок для генерації
+                    system = UKR_SYSTEM_PROMPT
+                    prompt_text = system + "\n\n" + user_query
+                    # Викликаємо HuggingFace pipeline, який очікує рядок
+                    gen = st.session_state.ukr_generator(
+                        prompt_text,
+                        max_new_tokens=512,
+                        do_sample=False
+                    )
+                    # Результат — список з одним словником із ключем "generated_text"
+                    answer = gen[0]["generated_text"]
             else:   
                 llm = create_llm("gemma3:4b")
                 chain = create_chain(llm, create_prompt(REGULAR_SYSTEM_PROMPT))
@@ -893,7 +915,7 @@ def image_mode(collection_name, summary = True):
             st.image(img_file)
             pil_img = Image.open(img_file)
             img_b64 = image_to_base64(pil_img)
-            prompt = 'Опиши детально, что ты видишь на этом изображении, как профессиональный OSINT-аналитик. Опиши всё на русском языке. Не используй списки в описании. Строго отвечай только на русском языке.'
+            prompt = IMAGE_DESCRIPTION_SYSTEM_PROMPT
             with st.spinner("Генерую опис…"):
                 caption = query_ollama(prompt, img_b64, "gemma3:4b")
                 llm      = create_llm("gemma3:4b")
@@ -970,6 +992,8 @@ def image_mode(collection_name, summary = True):
             st.session_state.image_processed=True
 
 def chat_image_mode(collection_name, llm_option):
+    if st.session_state.image_context_text['context']:
+        st.markdown(st.session_state.image_context_text['context'])
     if not st.session_state.messages:
         st.session_state.messages.append({"role": "assistant", "content": "Привіт! Я готовий до розмови. Що вас цікавить?"})
          
@@ -1016,12 +1040,17 @@ def chat_image_mode(collection_name, llm_option):
                 prompt = create_prompt(REGULAR_SYSTEM_PROMPT)
                 user_query = query+"\n---\n"+full_ctx
                 if llm_option == "Україномовну":
-                    chat = [
-                        {"role": "system", "content": "You are useful assistant. Use the info to answer user query. Answer in Ukrainian"},
-                        {"role": "user", "content": user_query}
-                        ]
-                    response = st.session_state.ukr_generator(chat, max_new_tokens=512)
-                    answer = response[0]["generated_text"][-1]["content"]
+                    # Формуємо єдиний рядок для генерації
+                    system = UKR_SYSTEM_PROMPT
+                    prompt_text = system + "\n\n" + user_query
+                    # Викликаємо HuggingFace pipeline, який очікує рядок
+                    gen = st.session_state.ukr_generator(
+                        prompt_text,
+                        max_new_tokens=512,
+                        do_sample=False
+                    )
+                    # Результат — список з одним словником із ключем "generated_text"
+                    answer = gen[0]["generated_text"]
                 else:   
                     llm = create_llm("gemma3:4b")
                     chain = create_chain(llm, prompt)
@@ -1043,7 +1072,7 @@ def chat_image_mode(collection_name, llm_option):
                 log_interaction(st.session_state.current_mode or "chat", query, answer)
         st.stop()
 
-def document_mode(collection_name, summary = False):
+def document_mode(collection_name, summary):
     uploaded_file = st.file_uploader("Завантажте документ", type=['pdf', 'xlsx', 'xls', 'doc', 'docx', 'md'])
     if uploaded_file is not None:
         ext = os.path.splitext(uploaded_file.name)[1].lower()
@@ -1136,6 +1165,8 @@ def document_mode(collection_name, summary = False):
 
         
 def chat_document_mode(collection_name, llm_option):
+    if st.session_state.document_context_text['context']:
+        st.markdown(st.session_state.document_context_text['context'])
     st.session_state.doc_mode = "chat"
     if not st.session_state.messages:
         st.session_state.messages.append({"role": "assistant", "content": "Привіт! Я готовий до розмови. Що вас цікавить?"})
@@ -1173,12 +1204,17 @@ def chat_document_mode(collection_name, llm_option):
                 prompt = create_prompt(REGULAR_SYSTEM_PROMPT)
                 user_query = query+"\n---\n"+best
                 if llm_option == "Україномовну":
-                    chat = [
-                        {"role": "system", "content": "You are useful assistant. Use the info to answer user query. Answer in Ukrainian"},
-                        {"role": "user", "content": user_query}
-                        ]
-                    response = st.session_state.ukr_generator(chat, max_new_tokens=512)
-                    answer = response[0]["generated_text"][-1]["content"]
+                    # Формуємо єдиний рядок для генерації
+                    system = UKR_SYSTEM_PROMPT
+                    prompt_text = system + "\n\n" + user_query
+                    # Викликаємо HuggingFace pipeline, який очікує рядок
+                    gen = st.session_state.ukr_generator(
+                        prompt_text,
+                        max_new_tokens=512,
+                        do_sample=False
+                    )
+                    # Результат — список з одним словником із ключем "generated_text"
+                    answer = gen[0]["generated_text"]
                 else:   
                     llm = create_llm("gemma3:4b")
                     chain = create_chain(llm, prompt)
@@ -1187,6 +1223,7 @@ def chat_document_mode(collection_name, llm_option):
 
             # Выводим ответ и сохраняем в историю
             st.markdown(answer)
+            
             with st.expander("Показати використаний контекст"):
                         st.markdown(
                             f"**Файл:** {results[0]['file_name']}  \n"
@@ -1200,15 +1237,29 @@ def chat_document_mode(collection_name, llm_option):
 
 
 def create_summary_prompt() -> ChatPromptTemplate:
-    """Возвращает промпт для LLM-суммаризации."""
     return ChatPromptTemplate.from_messages([
         ("system", SUMMARY_SYSTEM_PROMPT),
-        ("human", "{text}")               # <- единственная переменная
+        ("human", "{text}")
     ])
-
 
 def summarise_transcript(transcript: str, llm) -> str:
     prompt = create_summary_prompt()
     chain  = create_chain(llm, prompt)    # create_chain = prompt | llm
     response = chain.invoke({"text": transcript})
     return response.content
+
+def on_summarise_video():
+    st.session_state.video_summary = True
+
+def on_summarise_audio():
+    """Викликається при натисканні кнопки — робить summary і зберігає в сесії."""
+    st.session_state.audio_summary = True
+
+def on_summarise_image():
+    """Викликається при натисканні кнопки — робить summary і зберігає в сесії."""
+    st.session_state.image_summary = True
+
+def on_summarise_document():
+    """Викликається при натисканні кнопки — робить summary і зберігає в сесії."""
+    st.session_state.document_summary = True
+    
