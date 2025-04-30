@@ -131,6 +131,10 @@ ollama pull INSAIT-Institute/MamayLM-Gemma-2-9B-IT-v0.1   # українсько
 # або для zsh:
 pip install pymilvus\[model\]</pre>
 
+!!! Якщо після цього все одно виникає помилка **ModuleNotFoundError: No module named 'milvus_model'**, потрібно окремо встановити 
+
+<pre>pip install milvus-model</pre>
+
 ### Крок 7 — запустити Streamlit-додаток
 
 <pre>streamlit run app.py
