@@ -1,5 +1,6 @@
 # Імпорт необхідних бібліотек для роботи з Milvus - векторною базою даних для пошуку схожих документів
 from milvus_model.hybrid import BGEM3EmbeddingFunction
+import re # для регулярних виразів
 from langchain_huggingface.llms import HuggingFacePipeline
 from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
 # Імпорт бібліотек для роботи з LLM (великими мовними моделями)
@@ -54,6 +55,11 @@ def reset_chat():
     st.session_state.pop("greeted", None)  # Видалення стану привітання
 
 
+# функція для видалення дужок з тексту
+def remove_think(text):
+    return re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL) if '<think>' in text else text
+
+
 def create_bge_m3_embeddings():
     """Створює функцію для генерації ембедінгів BGE-M3, повертаючи ініціалізований об'єкт EMBEDDER"""
     bge_m3_ef = EMBEDDER  # Використання глобального об'єкта EMBEDDER
@@ -76,6 +82,7 @@ def create_llm(model_name):
     llm = ChatOllama(
         model=model_name,  # Назва моделі для використання
         temperature=0,  # Температура 0 для детермінованих відповідей
+        base_url="http://127.0.0.1:11434",  # URL для взаємодії з Ollama API
     )
     return llm
 
@@ -546,7 +553,7 @@ def log_interaction(mode, query, answer):
         )
 @st.cache_resource(show_spinner="Завантажуємо модель Whisper…")
 def get_whisper(model_size: str = "base"):
-    return whisper.load_model(model_size)
+    return whisper.load_model(model_size, device="cuda" if torch.cuda.is_available() else "cpu")
 
 
 """ 
@@ -678,8 +685,9 @@ def audio_mode(collection_name: str, summary: bool):
     # Подготовка текста к чанкингу
     cleaned = prepare_text(transcript)
     if summary and not st.session_state.audio_context_text.get("context"):
-        llm = create_llm("gemma3:4b")
+        llm = create_llm("qwen3:14b")
         summ = summarise_transcript(cleaned, llm)
+        summ = remove_think(summ) # видаляє дужки з тексту
         st.session_state.audio_context_text["context"] = summ
 
     # --- Построение единого JSON ---
@@ -755,7 +763,8 @@ def chat_audio_mode(collection_name, llm_option):
                     # Результат — список з одним словником із ключем "generated_text"
                     answer = gen[0]["generated_text"]
             else:   
-                llm = create_llm("gemma3:4b")
+                llm = create_llm(st.session_state.llm_option)
+                print(llm, 'llm')
                 chain = create_chain(llm, create_prompt(REGULAR_SYSTEM_PROMPT))
                 response = get_llm_response(chain, q, ctx).content
                 answer = response.content if hasattr(response, "content") else str(response)
@@ -799,8 +808,9 @@ def video_mode(collection_name, summary):
         st.markdown(txt)
         txt = prepare_text(txt)
         if st.session_state.video_summary and not st.session_state.video_context_text['context']:
-            llm = create_llm("gemma3:4b")
+            llm = create_llm(st.session_state.llm_option)
             summary = summarise_transcript(txt, llm)
+            summary = remove_think(summary) # видаляє дужки з тексту
             st.session_state.video_context_text['context'] = summary
             print(summary, 'summary')
             st.session_state.video_context_text['context'] = summary
@@ -877,7 +887,8 @@ def chat_video_mode(collection_name, llm_option):
                     # Результат — список з одним словником із ключем "generated_text"
                     answer = gen[0]["generated_text"]
             else:   
-                llm = create_llm("gemma3:4b")
+                llm = create_llm(st.session_state.llm_option)
+                print(llm, 'llm')
                 chain = create_chain(llm, create_prompt(REGULAR_SYSTEM_PROMPT))
                 response = get_llm_response(chain, q, ctx).content
                 answer = response.content if hasattr(response, "content") else str(response)
@@ -918,9 +929,11 @@ def image_mode(collection_name, summary = True):
             prompt = IMAGE_DESCRIPTION_SYSTEM_PROMPT
             with st.spinner("Генерую опис…"):
                 caption = query_ollama(prompt, img_b64, "gemma3:4b")
-                llm      = create_llm("gemma3:4b")
+                llm = create_llm(st.session_state.llm_option)
+                print(llm, 'llm')
                 if summary and not st.session_state.image_context_text['context']:
                     summary  = summarise_transcript(caption, llm)
+                    summary = remove_think(summary) # видаляє дужки з тексту
                     print(summary, 'summary')
                     st.session_state.image_context_text['context'] = summary
             st.write(caption)
@@ -1052,7 +1065,8 @@ def chat_image_mode(collection_name, llm_option):
                     # Результат — список з одним словником із ключем "generated_text"
                     answer = gen[0]["generated_text"]
                 else:   
-                    llm = create_llm("gemma3:4b")
+                    llm = create_llm(st.session_state.llm_option)
+                    print(llm, 'llm')
                     chain = create_chain(llm, prompt)
                     response = get_llm_response(chain, query, full_ctx)
                     answer = response.content if hasattr(response, "content") else str(response)
@@ -1119,7 +1133,8 @@ def document_mode(collection_name, summary):
     )
         txt = prepare_text(raw_str)
         if summary and not st.session_state.document_context_text['context']:
-            summary = summarise_transcript(txt, create_llm("gemma3:4b"))
+            summary = summarise_transcript(txt, create_llm(st.session_state.llm_option))
+            summary = remove_think(summary) # видаляє дужки з тексту
             st.session_state.document_context_text['context'] = summary
         raw = build_json(txt, original_filename, file_path)
 
@@ -1216,7 +1231,8 @@ def chat_document_mode(collection_name, llm_option):
                     # Результат — список з одним словником із ключем "generated_text"
                     answer = gen[0]["generated_text"]
                 else:   
-                    llm = create_llm("gemma3:4b")
+                    llm = create_llm(st.session_state.llm_option)
+                    print(llm, 'llm')
                     chain = create_chain(llm, prompt)
                     response = get_llm_response(chain, query, best)
                     answer = response.content if hasattr(response, "content") else str(response)

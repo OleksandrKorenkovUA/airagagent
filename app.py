@@ -231,12 +231,13 @@ with st.sidebar:
     # Вибір моделі мови для використання
     llm_option = st.selectbox(
         "Яку модель використовувати?",
-        ("Gemma 3:4b", "Україномовну"),)  # Опції вибору моделі
-
+        ("qwen3:14b", "Україномовну", "gemma3:27b", "gemma3:12b", "qwen3:30b"),)  # Опції вибору моделі
     st.session_state.llm_option = llm_option  # Збереження вибраної моделі
+    st.markdown(f'Ви обрали модель: {st.session_state.llm_option}')
     if st.session_state.llm_option == "Україномовну":  # Якщо вибрана україномовна модель
         st.session_state.ukr_generator = create_ukr_llm()  # Створення україномовної моделі
         st.session_state.llm_option = llm_option  # Повторне збереження вибраної моделі
+
 
     # Введення назви колекції для роботи
     collection_name = st.text_input("Введи назву колекції")
@@ -268,7 +269,7 @@ with st.sidebar:
 
 # Відображення вибраної колекції
 st.markdown(f"Ви обрали колекцію {collection_name}")
-
+print(torch.cuda.is_available(), 'cuda')
 # Режим чату
 if st.session_state.start_chat:
     st.session_state.mode = st.session_state.current_mode  # Встановлення режиму
@@ -321,7 +322,8 @@ if st.session_state.start_chat:
                     response = st.session_state.ukr_generator(chat, max_new_tokens=512)  # Генерація відповіді
                     answer = response[0]["generated_text"][-1]["content"]  # Отримання тексту відповіді
                 else:
-                    llm = create_llm("gemma3:4b")  # Створення моделі Gemma
+                    llm = create_llm(st.session_state.llm_option)  # Створення моделі Gemma
+                    print(llm, 'llm')
                 # Формування промпту та виклик LLM
                 prompt = create_prompt(REGULAR_SYSTEM_PROMPT)  # Створення промпту
                 chain = create_chain(llm, prompt)  # Створення ланцюжка обробки

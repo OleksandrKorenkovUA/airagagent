@@ -44,4 +44,18 @@ audio/
 
 # OS specific
 .DS_Store
-Thumbs.db 
+Thumbs.db
+
+# Large model files
+*.zip
+llama/
+
+# Docker compose files (if you want to exclude them)
+*docker-compose.yml
+
+# Chat history and databases
+chat_history.db
+*.sqlite3
+
+# Version files
+1.3.3 
