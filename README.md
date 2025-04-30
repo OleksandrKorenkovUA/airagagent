@@ -26,19 +26,17 @@
 ### Крок 1 — клонувати репозиторій**
 
 <pre> git clone https://github.com/OleksandrKorenkovUA/airagagent
-     cd airagagent </pre>
+cd airagagent</pre>
 
 ### Крок 2 — створити віртуальне середовище і встановити залежності**
 
-<pre> 
-python -m venv .venv
-source .venv/bin/activate 
-</pre>
+<pre> python -m venv .venv
+source .venv/bin/activate </pre>
 Для Windows PowerShell спочатку встановлення python через Start-Process "https://www.python.org/downloads/windows/" 
 
 # Windows: .venv\Scripts\activate
 
-pip install -r requirements.txt
+<pre>pip install -r requirements.txt</pre>
 
 
 ### Крок 3 — запустити Milvus (Docker Compose)**
@@ -47,14 +45,14 @@ pip install -r requirements.txt
 
 Для  Milvus in Docker (Windows) спочатку треба Install Docker Desktop on Windows (https://docs.docker.com/desktop/setup/install/windows-install/), далі відкрий Docker Desktop від імені адміністратора, клацнувши правою кнопкою миші та обравши Запустити від імені адміністратора. Завантаж інсталяційний скрипт і збережи його під назвою standalone.bat. 
 
-C:\>Invoke-WebRequest https://raw.githubusercontent.com/milvus-io/milvus/refs/heads/master/scripts/standalone_embed.bat -OutFile standalone.bat
+<pre>C:\>Invoke-WebRequest https://raw.githubusercontent.com/milvus-io/milvus/refs/heads/master/scripts/standalone_embed.bat -OutFile standalone.bat</pre>
 
 Запусти завантажений скрипт, щоб запустити Milvus як контейнер Docker.
 
-C:\>standalone.bat start
+<pre>C:\>standalone.bat start
 Wait for Milvus starting...
 Start successfully.
-To change the default Milvus configuration, edit user.yaml and restart the service.
+To change the default Milvus configuration, edit user.yaml and restart the service.</pre>
 
 Контейнер Docker з назвою milvus-standalone запущено на порту 19530. Разом із Milvus у тому ж контейнері встановлено вбудований etcd, який працює на порту 2379. Його файл конфігурації змаплено до embedEtcd.yaml у поточній теці. Том із даними Milvus змаплено до volumes/milvus у поточній теці. Ти можеш керувати контейнером Milvus і збереженими даними за допомогою таких команд.
 
@@ -69,13 +67,13 @@ To change the default Milvus configuration, edit user.yaml and restart the servi
 Виконай у PowerShell або командному рядку Windows такі команди, щоб завантажити файл конфігурації Docker Compose для Milvus Standalone і запустити Milvus:
 
 # Download the configuration file and rename it as docker-compose.yml
-C:\>Invoke-WebRequest https://github.com/milvus-io/milvus/releases/download/v2.4.15/milvus-standalone-docker-compose.yml -OutFile docker-compose.yml
+<pre>C:\>Invoke-WebRequest https://github.com/milvus-io/milvus/releases/download/v2.4.15/milvus-standalone-docker-compose.yml -OutFile docker-compose.yml</pre>
 
 # Start Milvus
-C:\>docker compose up -d
+<pre>C:\>docker compose up -d
 Creating milvus-etcd  ... done
 Creating milvus-minio ... done
-Creating milvus-standalone ... done
+Creating milvus-standalone ... done</pre>
 
 Залежно від швидкості з’єднання, завантаження образів для інсталяції Milvus може зайняти деякий час. Після запуску контейнерів milvus-standalone, milvus-minio та milvus-etcd ти побачиш наступне: 
 Контейнер milvus-etcd не відкриває порти для хосту, а його дані зберігаються у теці volumes/etcd у поточній директорії.
@@ -84,12 +82,12 @@ Creating milvus-standalone ... done
 
 **Варіант (для Linux/macOS)**
 
-curl -L https://github.com/milvus-io/milvus/releases/download/v2.3.21/milvus-standalone-docker-compose.yml \
+<pre>curl -L https://github.com/milvus-io/milvus/releases/download/v2.3.21/milvus-standalone-docker-compose.yml \
      -o docker-compose.yml
 
 docker compose up -d
 
-docker compose ps        # має з'явитися milvus-standalone running
+docker compose ps        # має з'явитися milvus-standalone running</pre>
 
 ### Крок 4 — (необов'язково) встановити Attu GUI для Milvus
 
@@ -103,21 +101,21 @@ docker compose ps        # має з'явитися milvus-standalone running
 
 **Linux — одна команда:**
 
-curl -fsSL https://ollama.com/install.sh | sh
+<pre>curl -fsSL https://ollama.com/install.sh | sh</pre>
 
 **Windows — скачайте інсталятор із розділу Download → Windows та запустіть.** 
 
 Після встановлення обов'язково завантажте потрібні моделі:
 
-ollama pull gemma3:4b
+<pre>ollama pull gemma3:4b
 
-ollama pull INSAIT-Institute/MamayLM-Gemma-2-9B-IT-v0.1   # українськомовна
+ollama pull INSAIT-Institute/MamayLM-Gemma-2-9B-IT-v0.1   # українськомовна</pre>
 
 ### Крок 6 — запустити Streamlit-додаток
 
-streamlit run app.py
+<pre>streamlit run app.py
 
-Відкрийте http://localhost:8501 у браузері.
+Відкрийте http://localhost:8501 у браузері.</pre>
 
 ### Використання
 
@@ -139,9 +137,9 @@ streamlit run app.py
 
 ### Корисні команди Milvus / Docker
 
-docker compose logs milvus-standalone      # перегляд логів
+<pre>docker compose logs milvus-standalone      # перегляд логів
 
-docker compose stop && docker compose rm   # зупинка та видалення контейнерів
+docker compose stop && docker compose rm   # зупинка та видалення контейнерів</pre>
 
 ### Оновлення та резервне копіювання
 
