@@ -38,12 +38,11 @@ source .venv/bin/activate </pre>
 
 <pre>pip install -r requirements.txt</pre>
 
-
 ### Крок 3 — запустити Milvus (Docker Compose)**
 
 **Інструкції для macOS, Windows і Linux однакові: завантажте готовий docker-compose.yml, підніміть сервіс і перевірте стан.**
 
-Для  Milvus in Docker (Windows) спочатку треба [Install Docker Desktop on Windows](https://docs.docker.com/desktop/setup/install/windows-install/), далі відкрий Docker Desktop від імені адміністратора, клацнувши правою кнопкою миші та обравши Запустити від імені адміністратора. Завантаж інсталяційний скрипт і збережи його під назвою standalone.bat. 
+Для  Milvus in Docker (Windows) спочатку треба [Install Docker Desktop on Windows](https://docs.docker.com/desktop/release-notes/#4390), далі відкрий Docker Desktop від імені адміністратора, клацнувши правою кнопкою миші та обравши Запустити від імені адміністратора. Завантаж інсталяційний скрипт і збережи його під назвою standalone.bat. 
 
 <pre>Invoke-WebRequest https://raw.githubusercontent.com/milvus-io/milvus/refs/heads/master/scripts/standalone_embed.bat -OutFile standalone.bat</pre>
 
@@ -116,6 +115,8 @@ Attu — це універсальний інструмент з відкрит�
 <pre>ollama pull gemma3:4b
 
 ollama pull INSAIT-Institute/MamayLM-Gemma-2-9B-IT-v0.1   # українськомовна</pre>
+
+**!!!Якщо при завантаженні моделей з Ollama ви стикаєтесь з ***Error: llama runner process has terminated: GGML_ASSERT(tensor->op == GGML_OP_UNARY) failed***, спробуйте встановити іншу версію Docker. Декілька користувачів помітили, що в Docker 4.41 Ollama починає падати із цим же GGML_ASSERT, а зворотне оновлення Docker Desktop до 4.40.0 вирішує проблему.**
 
 ### Крок 6 - Встановлення бібліотеки Milvus Model Lib
 
