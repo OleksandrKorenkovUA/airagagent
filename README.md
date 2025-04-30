@@ -23,15 +23,18 @@
 
 ## Клонування та локальний запуск
 
-### Крок 1 — клонувати репозиторій**  
-git clone https://github.com/<your-org>/<your-repo>.git
-cd <your-repo>
+### Крок 1 — клонувати репозиторій**
+
+git clone https://github.com/OleksandrKorenkovUA/airagagent
+cd airagagent
 
 ### Крок 2 — створити віртуальне середовище і встановити залежності**
 
 python -m venv .venv
 
-source .venv/bin/activate   
+source .venv/bin/activate 
+
+Для Windows PowerShell спочатку встановлення python через Start-Process "https://www.python.org/downloads/windows/" 
 
 # Windows: .venv\Scripts\activate
 
@@ -41,6 +44,45 @@ pip install -r requirements.txt
 ### Крок 3 — запустити Milvus (Docker Compose)**
 
 **Інструкції для macOS, Windows і Linux однакові: завантажте готовий docker-compose.yml, підніміть сервіс і перевірте стан.**
+
+Для  Milvus in Docker (Windows) спочатку треба Install Docker Desktop on Windows (https://docs.docker.com/desktop/setup/install/windows-install/), далі відкрий Docker Desktop від імені адміністратора, клацнувши правою кнопкою миші та обравши Запустити від імені адміністратора. Завантаж інсталяційний скрипт і збережи його під назвою standalone.bat. 
+
+C:\>Invoke-WebRequest https://raw.githubusercontent.com/milvus-io/milvus/refs/heads/master/scripts/standalone_embed.bat -OutFile standalone.bat
+
+Запусти завантажений скрипт, щоб запустити Milvus як контейнер Docker.
+
+C:\>standalone.bat start
+Wait for Milvus starting...
+Start successfully.
+To change the default Milvus configuration, edit user.yaml and restart the service.
+
+Контейнер Docker з назвою milvus-standalone запущено на порту 19530. Разом із Milvus у тому ж контейнері встановлено вбудований etcd, який працює на порту 2379. Його файл конфігурації змаплено до embedEtcd.yaml у поточній теці. Том із даними Milvus змаплено до volumes/milvus у поточній теці. Ти можеш керувати контейнером Milvus і збереженими даними за допомогою таких команд.
+
+Детальніше тут https://milvus.io/docs/install_standalone-windows.md
+
+**Запуск Milvus за допомогою Docker Compose**
+
+Після встановлення Docker Desktop на Windows ти можеш отримати доступ до Docker CLI через PowerShell або командний рядок Windows у режимі адміністратора. Виконати Docker Compose для запуску Milvus можна з PowerShell, командного рядка Windows або середовища WSL 2. 
+
+Із PowerShell або командного рядка Windows:
+Відкрий Docker Desktop у режимі адміністратора, клацнувши правою кнопкою миші й обравши Запустити від імені адміністратора.
+Виконай у PowerShell або командному рядку Windows такі команди, щоб завантажити файл конфігурації Docker Compose для Milvus Standalone і запустити Milvus:
+
+# Download the configuration file and rename it as docker-compose.yml
+C:\>Invoke-WebRequest https://github.com/milvus-io/milvus/releases/download/v2.4.15/milvus-standalone-docker-compose.yml -OutFile docker-compose.yml
+
+# Start Milvus
+C:\>docker compose up -d
+Creating milvus-etcd  ... done
+Creating milvus-minio ... done
+Creating milvus-standalone ... done
+
+Залежно від швидкості з’єднання, завантаження образів для інсталяції Milvus може зайняти деякий час. Після запуску контейнерів milvus-standalone, milvus-minio та milvus-etcd ти побачиш наступне: 
+Контейнер milvus-etcd не відкриває порти для хосту, а його дані зберігаються у теці volumes/etcd у поточній директорії.
+Контейнер milvus-minio доступний локально на портах 9090 і 9091, використовує стандартні облікові дані автентифікації, а його дані зберігаються у volumes/minio.
+Контейнер milvus-standalone працює локально на порту 19530 з налаштуваннями за замовчуванням, зберігає свої дані у volumes/milvus.
+
+**Варіант (для Linux/macOS)**
 
 curl -L https://github.com/milvus-io/milvus/releases/download/v2.3.21/milvus-standalone-docker-compose.yml \
      -o docker-compose.yml
