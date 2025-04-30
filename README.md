@@ -25,8 +25,8 @@
 
 ### Крок 1 — клонувати репозиторій**
 
-git clone https://github.com/OleksandrKorenkovUA/airagagent
-cd airagagent
+<pre> git clone https://github.com/OleksandrKorenkovUA/airagagent </pre>
+<pre> cd airagagent </pre>
 
 ### Крок 2 — створити віртуальне середовище і встановити залежності**
 
