@@ -32,7 +32,7 @@ cd airagagent</pre>
 
 <pre> python -m venv .venv
 source .venv/bin/activate </pre>
-Для Windows PowerShell спочатку встановлення python через Start-Process "https://www.python.org/downloads/windows/" 
+Для Windows PowerShell спочатку встановлення python через Start-Process - [Документація Docker](https://www.python.org/downloads/windows)
 
 # Windows: .venv\Scripts\activate
 
@@ -43,7 +43,7 @@ source .venv/bin/activate </pre>
 
 **Інструкції для macOS, Windows і Linux однакові: завантажте готовий docker-compose.yml, підніміть сервіс і перевірте стан.**
 
-Для  Milvus in Docker (Windows) спочатку треба Install Docker Desktop on Windows (https://docs.docker.com/desktop/setup/install/windows-install/), далі відкрий Docker Desktop від імені адміністратора, клацнувши правою кнопкою миші та обравши Запустити від імені адміністратора. Завантаж інсталяційний скрипт і збережи його під назвою standalone.bat. 
+Для  Milvus in Docker (Windows) спочатку треба [Install Docker Desktop on Windows](https://docs.docker.com/desktop/setup/install/windows-install/), далі відкрий Docker Desktop від імені адміністратора, клацнувши правою кнопкою миші та обравши Запустити від імені адміністратора. Завантаж інсталяційний скрипт і збережи його під назвою standalone.bat. 
 
 <pre>Invoke-WebRequest https://raw.githubusercontent.com/milvus-io/milvus/refs/heads/master/scripts/standalone_embed.bat -OutFile standalone.bat</pre>
 
@@ -67,10 +67,10 @@ To change the default Milvus configuration, edit user.yaml and restart the servi
 Виконай у PowerShell або командному рядку Windows такі команди, щоб завантажити файл конфігурації Docker Compose для Milvus Standalone і запустити Milvus:
 
 # Download the configuration file and rename it as docker-compose.yml
-<pre>C:\>Invoke-WebRequest https://github.com/milvus-io/milvus/releases/download/v2.4.15/milvus-standalone-docker-compose.yml -OutFile docker-compose.yml</pre>
+<pre>Invoke-WebRequest https://github.com/milvus-io/milvus/releases/download/v2.4.15/milvus-standalone-docker-compose.yml -OutFile docker-compose.yml</pre>
 
 # Start Milvus
-<pre>C:\>docker compose up -d
+<pre>docker compose up -d
 Creating milvus-etcd  ... done
 Creating milvus-minio ... done
 Creating milvus-standalone ... done</pre>
@@ -143,14 +143,14 @@ docker compose stop && docker compose rm   # зупинка та видален�
 
 ### Оновлення та резервне копіювання
 
-Milvus зберігає дані в томах volumes/; для резервної копії достатньо скопіювати папку milvus_standalone_data. При оновленні версії Milvus замініть docker-compose.yml на свіжий, збережіть томи і перезапустіть контейнери.
+Milvus зберігає дані в томах volumes/; 
+для резервної копії достатньо скопіювати папку milvus_standalone_data. 
+При оновленні версії Milvus замініть docker-compose.yml на свіжий, збережіть томи і перезапустіть контейнери.
 
 ### Поширені помилки
 
 Connection refused :19530 — контейнер Milvus не запущений або порт зайнятий. Переконайтеся, що docker compose ps показує running.
-
 CUDA не знайдено — Ollama спробує використати GPU; якщо ви на CPU-машині, ігноруйте попередження або вимкніть GPU-режим.
-
 KeyError context під час чату — переконайтеся, що функція create_prompt() у коді використовує змінні {context} і {question}.
 
 ## Локальна база даних SQLite
