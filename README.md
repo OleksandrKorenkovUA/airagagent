@@ -45,11 +45,11 @@ source .venv/bin/activate </pre>
 
 Для  Milvus in Docker (Windows) спочатку треба Install Docker Desktop on Windows (https://docs.docker.com/desktop/setup/install/windows-install/), далі відкрий Docker Desktop від імені адміністратора, клацнувши правою кнопкою миші та обравши Запустити від імені адміністратора. Завантаж інсталяційний скрипт і збережи його під назвою standalone.bat. 
 
-<pre>C:\>Invoke-WebRequest https://raw.githubusercontent.com/milvus-io/milvus/refs/heads/master/scripts/standalone_embed.bat -OutFile standalone.bat</pre>
+<pre>Invoke-WebRequest https://raw.githubusercontent.com/milvus-io/milvus/refs/heads/master/scripts/standalone_embed.bat -OutFile standalone.bat</pre>
 
 Запусти завантажений скрипт, щоб запустити Milvus як контейнер Docker.
 
-<pre>C:\>standalone.bat start
+<pre>.\standalone.bat start
 Wait for Milvus starting...
 Start successfully.
 To change the default Milvus configuration, edit user.yaml and restart the service.</pre>
