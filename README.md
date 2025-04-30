@@ -174,7 +174,20 @@ Milvus зберігає дані в томах volumes/;
 - Connection refused :19530 — контейнер Milvus не запущений або порт зайнятий. Переконайтеся, що docker compose ps показує running.
 - CUDA не знайдено — Ollama спробує використати GPU; якщо ви на CPU-машині, ігноруйте попередження або вимкніть GPU-режим.
 - KeyError context під час чату — переконайтеся, що функція create_prompt() у коді використовує змінні {context} і {question}.
-- Якщо при завантаженні моделей з Ollama ви стикаєтесь з ***Error: llama runner process has terminated: GGML_ASSERT(tensor->op == GGML_OP_UNARY) failed***, спробуйте встановити іншу версію Docker. Декілька користувачів помітили, що в Docker 4.41 Ollama починає падати із цим же GGML_ASSERT, а зворотне оновлення Docker Desktop до 4.40.0 вирішує проблему.
+- При завантаженні моделей з Ollama ви стикаєтесь з ***Error: llama runner process has terminated: GGML_ASSERT(tensor->op == GGML_OP_UNARY) failed***.Ця помилка виникає через конфлікт між бібліотеками ggml, які Ollama завантажує з системних шляхів, та власною вбудованою версією llama.cpp. Зокрема, Docker Desktop встановлює в свій каталог DLL-файли — ggml-base.dll, ggml-cpu.dll, ggml.dll і llama.dll — і під час запуску Qwen3:14b Ollama випадково завантажує старі версії цих бібліотек замість своїх, що призводить до збоїв у перевірці GGML_ASSERT(tensor->op == GGML_OP_UNARY) .
+
+Щоб обійти цю проблему, перейменуйте конфліктні DLL-файли в папці Docker Desktop, додавши їм суфікс .old. Відкрийте PowerShell від імені адміністратора та виконайте:
+<pre>cd "C:\Program Files\Docker\Docker\resources\bin"
+ren ggml-base.dll ggml-base.dll.old
+ren ggml-cpu.dll   ggml-cpu.dll.old
+ren ggml.dll       ggml.dll.old
+ren llama.dll      llama.dll.oldl</pre>
+Після цього перезапустіть команду:
+
+<pre>ollama run qwen3:14b</pre>
+
+Якщо ви не користуєтеся Docker Desktop або перейменування здається незручним, багато користувачів успішно вирішували цю помилку, відкотившись до версії Docker Desktop 4.40 Також переконайтеся, що в змінній оточення `PATH` не залишилися старі збірки llama.cpp. Якщо ви встановлювали їх раніше, видаліть відповідний шлях або перейменуйте подібні DLL-файли, щоб Ollama використовував тільки свій комплект бібліотек.
+
 - Якщо виникає помилка **ModuleNotFoundError: No module named 'milvus_model'**, потрібно окремо встановити 
 
 <pre>pip install milvus-model</pre>
