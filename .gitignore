@@ -19,12 +19,13 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-
+.gitignore
 # Virtual Environment
 venv/
 env/
 ENV/
 .venv/
+
 
 # IDE
 .idea/
