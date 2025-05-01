@@ -328,7 +328,8 @@ if st.session_state.start_chat:
                 prompt = create_prompt(REGULAR_SYSTEM_PROMPT)  # Створення промпту
                 chain = create_chain(llm, prompt)  # Створення ланцюжка обробки
                 response = get_llm_response(chain, query, best)  # Отримання відповіді
-                answer = response.content if hasattr(response, "content") else str(response)  # Отримання тексту відповіді
+                answer = response.content if hasattr(response, "content") else str(response)
+                answer = remove_think(answer)
             # Виведення відповіді та збереження в історію
             st.markdown(answer)  # Відображення відповіді
             try:

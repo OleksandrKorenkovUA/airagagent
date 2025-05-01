@@ -89,18 +89,18 @@ class HybridRetriever:
         )
         # Додавання службових полів для ідентифікації та метаданих
         schema.add_field(
-            field_name="original_uuid", datatype=DataType.VARCHAR, max_length=128  # Унікальний ідентифікатор оригінального документа
+            field_name="original_uuid", datatype=DataType.VARCHAR, max_length=65535  # Унікальний ідентифікатор оригінального документа
         )
         schema.add_field(
-            field_name="doc_id", datatype=DataType.VARCHAR, max_length=64  # Ідентифікатор документа
+            field_name="doc_id", datatype=DataType.VARCHAR, max_length=65535  # Ідентифікатор документа
         )
         schema.add_field(
-             field_name="chunk_id", datatype=DataType.VARCHAR, is_primary=True, auto_id=False, max_length=64,  # Первинний ключ - ідентифікатор фрагмента
+            field_name="chunk_id", datatype=DataType.VARCHAR, is_primary=True, auto_id=False, max_length=65535,  # Первинний ключ - ідентифікатор фрагмента
         ),
         schema.add_field(field_name="original_index", datatype=DataType.INT32, nullable=True)  # Індекс фрагмента в оригінальному документі
-        schema.add_field(field_name="file_path", datatype=DataType.VARCHAR, max_length=1024)  # Шлях до файлу
-        schema.add_field(field_name="file_name", datatype=DataType.VARCHAR, max_length=512)  # Назва файлу
-        schema.add_field(field_name="upload_date", datatype=DataType.VARCHAR, max_length=1024)  # Дата завантаження
+        schema.add_field(field_name="file_path", datatype=DataType.VARCHAR, max_length=65535)  # Шлях до файлу
+        schema.add_field(field_name="file_name", datatype=DataType.VARCHAR, max_length=65535)  # Назва файлу
+        schema.add_field(field_name="upload_date", datatype=DataType.VARCHAR, max_length=65535)  # Дата завантаження
 
         # Налаштування функції BM25 для створення розріджених векторів з тексту
         functions = Function(
@@ -302,24 +302,24 @@ class VideoHybridRetriever:
         schema.add_field("dense_vector",  DataType.FLOAT_VECTOR, dim=dense_dim)  # Поле для щільного вектора
 
         # Службові поля документа для ідентифікації та метаданих
-        schema.add_field("original_uuid",  DataType.VARCHAR, max_length=128)  # Унікальний ідентифікатор оригінального документа
-        schema.add_field("doc_id",         DataType.VARCHAR, max_length=64)  # Ідентифікатор документа
+        schema.add_field("original_uuid",  DataType.VARCHAR, max_length= 65535)  # Унікальний ідентифікатор оригінального документа
+        schema.add_field("doc_id",         DataType.VARCHAR, max_length=65535)  # Ідентифікатор документа
         schema.add_field("chunk_id",       DataType.VARCHAR, is_primary=True,  # Первинний ключ - ідентифікатор фрагмента
-                         auto_id=False,    max_length=64)
+                         auto_id=False,    max_length=65535)
         schema.add_field("original_index", DataType.INT32, nullable=True)  # Індекс фрагмента в оригінальному документі
 
         # Метадані відео (всі — VARCHAR/INT для простоти фільтрації)
-        schema.add_field("video_id",      DataType.VARCHAR, max_length=32, nullable=True)  # Ідентифікатор відео (наприклад, YouTube ID)
-        schema.add_field("unique_video_id",     DataType.VARCHAR, max_length=40, nullable=True)  # Унікальний ідентифікатор відео
-        schema.add_field("title",         DataType.VARCHAR, max_length=512, nullable=True)  # Назва відео
-        schema.add_field("uploader",      DataType.VARCHAR, max_length=256, nullable=True)  # Автор відео
+        schema.add_field("video_id",      DataType.VARCHAR, max_length=65535, nullable=True)  # Ідентифікатор відео (наприклад, YouTube ID)
+        schema.add_field("unique_video_id",     DataType.VARCHAR, max_length=65535, nullable=True)  # Унікальний ідентифікатор відео
+        schema.add_field("title",         DataType.VARCHAR, max_length=65535, nullable=True)  # Назва відео
+        schema.add_field("uploader",      DataType.VARCHAR, max_length=65535, nullable=True)  # Автор відео
         schema.add_field("duration",      DataType.INT64, nullable=True)  # Тривалість відео в секундах
-        schema.add_field("upload_date",   DataType.VARCHAR, max_length=1024)  # Дата завантаження відео
+        schema.add_field("upload_date",   DataType.VARCHAR, max_length=65535)  # Дата завантаження відео
         schema.add_field("view_count",    DataType.INT64, nullable=True)  # Кількість переглядів
         schema.add_field("like_count",    DataType.INT64, nullable=True)  # Кількість вподобань
-        schema.add_field("url",           DataType.VARCHAR, max_length=1024, nullable=True)  # URL відео
-        schema.add_field("file_path",     DataType.VARCHAR, max_length=1024)  # Шлях до файлу
-        schema.add_field("file_name",     DataType.VARCHAR, max_length=512)  # Назва файлу
+        schema.add_field("url",           DataType.VARCHAR, max_length=65535, nullable=True)  # URL відео
+        schema.add_field("file_path",     DataType.VARCHAR, max_length=65535)  # Шлях до файлу
+        schema.add_field("file_name",     DataType.VARCHAR, max_length=65535)  # Назва файлу
 
         # BM25 для розріджених векторів з тексту транскрипції
         schema.add_function(Function(
@@ -536,12 +536,12 @@ class ImageHybridRetriever:
         schema.add_field("dense_vector",  DataType.FLOAT_VECTOR, dim=dense_dim)
 
         # Службові поля документа
-        schema.add_field("original_uuid",  DataType.VARCHAR, max_length=128)
-        schema.add_field("doc_id",         DataType.VARCHAR, max_length=64)
-        schema.add_field("chunk_id",       DataType.VARCHAR, is_primary=True, auto_id=False,    max_length=64)
-        schema.add_field("file_path",     DataType.VARCHAR, max_length=1024)
-        schema.add_field("file_name",     DataType.VARCHAR, max_length=512)
-        schema.add_field("upload_date",   DataType.VARCHAR, max_length=1024)
+        schema.add_field("original_uuid",  DataType.VARCHAR, max_length=65535)
+        schema.add_field("doc_id",         DataType.VARCHAR, max_length=65535)
+        schema.add_field("chunk_id",       DataType.VARCHAR, is_primary=True, auto_id=False,    max_length=65535)
+        schema.add_field("file_path",     DataType.VARCHAR, max_length=65535)
+        schema.add_field("file_name",     DataType.VARCHAR, max_length=65535)
+        schema.add_field("upload_date",   DataType.VARCHAR, max_length=65535)
         schema.add_field("original_index", DataType.INT32)
 
         # BM25 для розріджених векторів
@@ -737,14 +737,14 @@ class AudioHybridRetriever:
         schema.add_field("dense_vector",  DataType.FLOAT_VECTOR, dim=dense_dim)
 
         # Службові поля документа
-        schema.add_field("original_uuid",  DataType.VARCHAR, max_length=128)
-        schema.add_field("doc_id",         DataType.VARCHAR, max_length=64)
+        schema.add_field("original_uuid",  DataType.VARCHAR, max_length=65535)
+        schema.add_field("doc_id",         DataType.VARCHAR, max_length=65535)
         schema.add_field("chunk_id",       DataType.VARCHAR, is_primary=True,
-                         auto_id=False,    max_length=64)
-        schema.add_field("audio_id",      DataType.VARCHAR, max_length=32, nullable=True)
-        schema.add_field("title",         DataType.VARCHAR, max_length=512, nullable=True)
-        schema.add_field("file_path",     DataType.VARCHAR, max_length=1024)
-        schema.add_field("file_name",     DataType.VARCHAR, max_length=512)
+                         auto_id=False,    max_length=65535)
+        schema.add_field("audio_id",      DataType.VARCHAR, max_length=65535, nullable=True)
+        schema.add_field("title",         DataType.VARCHAR, max_length=65535, nullable=True)
+        schema.add_field("file_path",     DataType.VARCHAR, max_length=65535)
+        schema.add_field("file_name",     DataType.VARCHAR, max_length=65535)
 
         # BM25 для розріджених векторів
         schema.add_function(Function(

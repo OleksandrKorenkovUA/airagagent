@@ -746,7 +746,10 @@ def chat_audio_mode(collection_name, llm_option):
             client=st.session_state.milvus_client,
             collection_name=collection_name,
             dense_embedding_function=dense_ef,) 
-            retr.build_collection()          # ← додали
+            retr.build_collection()
+            if st.session_state.audio_context_text['context']:
+                q = q + "\n---\n" + st.session_state.audio_context_text['context']
+                print(q, 'q + context')
             chunks = retr.search(q, mode="hybrid", k=5)
             ctx = "\n---\n".join([c["content"] for c in chunks]) if chunks else ""
             user_query = q+"\n---\n"+ctx
@@ -768,6 +771,7 @@ def chat_audio_mode(collection_name, llm_option):
                 chain = create_chain(llm, create_prompt(REGULAR_SYSTEM_PROMPT))
                 response = get_llm_response(chain, q, ctx).content
                 answer = response.content if hasattr(response, "content") else str(response)
+                answer = remove_think(answer)
 
             st.markdown(answer)
             with st.expander("Показати використаний контекст"):
@@ -853,7 +857,9 @@ def chat_video_mode(collection_name, llm_option):
         with st.chat_message(m["role"]): st.markdown(m["content"])
 
     # ввод користувача
+ 
     if q := st.chat_input("Ваш запит"):
+     
         st.session_state.messages.append(dict(role="user", content=q))
         with st.chat_message("user"): st.markdown(q)
         with st.chat_message("assistant"):
@@ -863,7 +869,10 @@ def chat_video_mode(collection_name, llm_option):
             client=st.session_state.milvus_client,
             collection_name=collection_name,
             dense_embedding_function=dense_ef,) 
-            retr.build_collection()          # ← додали
+            retr.build_collection()
+            if st.session_state.video_context_text['context']:
+                q = q + "\n---\n" + st.session_state.video_context_text['context']
+                print(q, 'q + context')
             chunks = retr.search(q, mode="hybrid", k=5)
             ctx = "\n---\n".join([c["content"] for c in chunks]) if chunks else ""
             user_query = q+"\n---\n"+ctx
@@ -892,6 +901,7 @@ def chat_video_mode(collection_name, llm_option):
                 chain = create_chain(llm, create_prompt(REGULAR_SYSTEM_PROMPT))
                 response = get_llm_response(chain, q, ctx).content
                 answer = response.content if hasattr(response, "content") else str(response)
+                answer = remove_think(answer)
 
             st.markdown(answer)
             with st.expander("Показати використаний контекст"):
@@ -928,7 +938,7 @@ def image_mode(collection_name, summary = True):
             img_b64 = image_to_base64(pil_img)
             prompt = IMAGE_DESCRIPTION_SYSTEM_PROMPT
             with st.spinner("Генерую опис…"):
-                caption = query_ollama(prompt, img_b64, "gemma3:4b")
+                caption = query_ollama(prompt, img_b64, "gemma3:12b")
                 llm = create_llm(st.session_state.llm_option)
                 print(llm, 'llm')
                 if summary and not st.session_state.image_context_text['context']:
@@ -1016,12 +1026,9 @@ def chat_image_mode(collection_name, llm_option):
 
     # Ввод пользователя
     if query := st.chat_input("Введіть ваше запитання...", key="document_chat_input"):
-        # Добавляем сообщение пользователя в историю
+
         st.session_state.messages.append({"role": "user", "content": query})
         st.session_state.chat_history.append({"role":"user","content":query})
-
-
-
         with st.chat_message("user"):
             st.markdown(query)
 
@@ -1037,6 +1044,9 @@ def chat_image_mode(collection_name, llm_option):
             )
             retriever.build_collection()          # ← додали
             # Ищем 5 наиболее похожих чанков
+            if st.session_state.image_context_text['context']:
+                query = query + "\n---\n" + st.session_state.image_context_text['context']
+                print(query, 'query + context')
             results = retriever.search(query, mode="hybrid", k=5)
             if not results:
                 answer = "На жаль, не знайшов релевантної інформації."
@@ -1070,7 +1080,7 @@ def chat_image_mode(collection_name, llm_option):
                     chain = create_chain(llm, prompt)
                     response = get_llm_response(chain, query, full_ctx)
                     answer = response.content if hasattr(response, "content") else str(response)
-
+                    answer = remove_think(answer)
 
                 # Выводим ответ и сохраняем в историю
                 st.markdown(answer)
@@ -1208,6 +1218,9 @@ def chat_document_mode(collection_name, llm_option):
             )
             retriever.build_collection()          # ← додали
             # Ищем 5 наиболее похожих чанков
+            if st.session_state.document_context_text['context']:
+                query = query + "\n---\n" + st.session_state.document_context_text['context']
+                print(query, 'query + context')
             results = retriever.search(query, mode="hybrid", k=5)
             if not results:
                 answer = "На жаль, не знайшов релевантної інформації."
@@ -1236,7 +1249,7 @@ def chat_document_mode(collection_name, llm_option):
                     chain = create_chain(llm, prompt)
                     response = get_llm_response(chain, query, best)
                     answer = response.content if hasattr(response, "content") else str(response)
-
+                    answer = remove_think(answer)
             # Выводим ответ и сохраняем в историю
             st.markdown(answer)
             
