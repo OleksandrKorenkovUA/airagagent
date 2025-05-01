@@ -230,6 +230,18 @@ ren llama.dll      llama.dll.oldl</pre>
 
 <pre>$env:OLLAMA_HOST = "http://host.docker.internal:11434"</pre>
 
+
+## (за бажанням) Увімкніть прискорення на GPU. 
+
+Якщо ваш Docker-двигун у Windows працює в режимі WSL 2 й у вас є відеокарта NVIDIA з установленими драйверами CUDA, перезапустіть контейнер, надавши йому доступ до GPU:
+
+<pre>docker stop ollama
+docker rm   ollama
+docker run -d --name ollama --gpus all `
+  -p 11434:11434 `
+  -v ollama-data:/root/.ollama `
+  ollama/ollama:latest</pre>
+
 ## Локальна база даних SQLite
 
 Додаток використовує SQLite для зберігання всіх запитів користувачів та відповідей моделей. Це дозволяє:
