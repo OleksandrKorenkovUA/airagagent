@@ -6,7 +6,6 @@ import logging  # Для логування подій та помилок у п
 from functions import *  # Імпорт усіх допоміжних функцій з модуля functions
 import whisper  # Бібліотека для розпізнавання мови в аудіофайлах
 from rag import *  # Імпорт усіх функцій для роботи з системою пошуку та отримання інформації (RAG) з Milvus
-from config import llm  # Імпорт конфігурацій для різних моделей мови
 from pymilvus import MilvusClient, DataType, connections, FieldSchema, MilvusException  # Компоненти для роботи з векторною базою даних Milvus
 from datetime import datetime  # Для роботи з датами та часом, зокрема для логування
 
@@ -231,7 +230,7 @@ with st.sidebar:
     # Вибір моделі мови для використання
     llm_option = st.selectbox(
         "Яку модель використовувати?",
-        ("qwen3:14b", "Україномовну", "gemma3:27b", "gemma3:12b", "qwen3:30b"),)  # Опції вибору моделі
+        ("qwen3:14b", "Україномовну", "gemma3:27b", "gemma3:12b", "qwen3:30b", "qwen3:30b-a3b"),)  # Опції вибору моделі
     st.session_state.llm_option = llm_option  # Збереження вибраної моделі
     st.markdown(f'Ви обрали модель: {st.session_state.llm_option}')
     if st.session_state.llm_option == "Україномовну":  # Якщо вибрана україномовна модель
@@ -272,79 +271,11 @@ st.markdown(f"Ви обрали колекцію {collection_name}")
 print(torch.cuda.is_available(), 'cuda')
 # Режим чату
 if st.session_state.start_chat:
-    st.session_state.mode = st.session_state.current_mode  # Встановлення режиму
-    if "messages" not in st.session_state: st.session_state.messages = []  # Ініціалізація повідомлень
     collection_name = st.session_state.collection_name  # Отримання назви колекції
-    st.session_state.current_mode = "chat"  # Встановлення режиму чату
-
-    # Якщо чат тільки що запущений, відправляємо привітання
-    if not st.session_state.messages:
-        st.session_state.messages.append({
-            "role": "assistant",
-            "content": "Привіт! Я ваш чат‑агент. Я вмію шукати по збережених векторах у Milvus і давати відповіді. Що запитуєте?"
-        })
-
-    # Відображення історії повідомлень
-    for msg in st.session_state.messages:
-        with st.chat_message(msg["role"]):  # Створення блоку повідомлення
-            st.markdown(msg["content"])  # Відображення тексту повідомлення
-
-    # Введення користувача
-    if query := st.chat_input("Введіть ваше запитання...", key="chat_input"):
-        # Додавання повідомлення користувача в історію
-        st.session_state.messages.append({"role": "user", "content": query})
-        with st.chat_message("user"):  # Створення блоку повідомлення користувача
-            st.markdown(query)  # Відображення запиту користувача
-
-        # Запуск пошуку по векторах
-        with st.chat_message("assistant"):  # Створення блоку повідомлення асистента
-            st.write("Шукаю відповідь...")  # Відображення статусу пошуку
-            # Створення функції вбудовування
-            dense_ef = create_bge_m3_embeddings()
-            retriever = HybridRetriever(  # Створення гібридного пошуковика
-                client=st.session_state.milvus_client,  # Клієнт Milvus
-                collection_name=collection_name,  # Назва колекції
-                dense_embedding_function=dense_ef,  # Функція вбудовування
-            )
-            # Пошук 5 найбільш схожих фрагментів
-            results = retriever.search(query, mode="hybrid", k=5)
-            if not results:  # Якщо результати не знайдені
-                answer = "На жаль, не знайшов релевантної інформації."
-            else:
-                best = results[0]["content"]  # Отримання найкращого результату
-                print(best, 'best content')  # Виведення найкращого результату в консоль
-                user_query = query+"\n---\n"+best  # Формування запиту з контекстом
-                if st.session_state.llm_option == "Україномовну":  # Якщо вибрана україномовна модель
-                    chat = [
-                        {"role": "system", "content": "You are useful assistant. Use the info to answer user query. Answer in Ukrainian"},
-                        {"role": "user", "content": user_query}
-                        ]
-                    response = st.session_state.ukr_generator(chat, max_new_tokens=512)  # Генерація відповіді
-                    answer = response[0]["generated_text"][-1]["content"]  # Отримання тексту відповіді
-                else:
-                    llm = create_llm(st.session_state.llm_option)  # Створення моделі Gemma
-                    print(llm, 'llm')
-                # Формування промпту та виклик LLM
-                prompt = create_prompt(REGULAR_SYSTEM_PROMPT)  # Створення промпту
-                chain = create_chain(llm, prompt)  # Створення ланцюжка обробки
-                response = get_llm_response(chain, query, best)  # Отримання відповіді
-                answer = response.content if hasattr(response, "content") else str(response)
-                answer = remove_think(answer)
-            # Виведення відповіді та збереження в історію
-            st.markdown(answer)  # Відображення відповіді
-            try:
-                with st.expander("Показати використаний контекст"):  # Створення розгортаємого блоку
-                        st.markdown(
-                            f"**Файл:** {results[0]['file_name']}  \n"  # Відображення імені файлу
-                            f"**Chunk ID:** `{results[0]['chunk_id']}`  \n"  # Відображення ID фрагмента
-                            f"**Дата завантаження:** {results[0]['upload_date']}  \n"  # Відображення дати завантаження
-                            f"**Score:** {results[0]['score']:.4f}  \n\n"  # Відображення оцінки релевантності
-                            f"> {results[0]['content']}"  # Відображення вмісту фрагмента
-                            )
-            except:
-                pass  # Ігнорування помилок при відображенні контексту
-            st.session_state.messages.append({"role": "assistant", "content": answer})  # Додавання відповіді в історію
-            log_interaction(st.session_state.current_mode or "chat", query, answer)  # Логування взаємодії
+    st.session_state.mode = st.session_state.current_mode  # Встановлення режиму
+    st.session_state.doc_mode == "main_chat"  # Якщо режим перегляду документа
+    st.title("Пошук по колекції")  # Заголовок
+    main_chat(collection_name)
 
 
 # Режим роботи з документами
