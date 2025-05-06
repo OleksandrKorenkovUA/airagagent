@@ -57,10 +57,8 @@ SUMMARY_SYSTEM_PROMPT = (
     "Відповідай **лише переліченими реченнями**, без префіксів "
     "«text:», «summary:» і без копіювання оригіналу."
 )
-
-IMAGE_DESCRIPTION_SYSTEM_PROMPT = (
-    "Опиши детально, що ти бачиш на цьому зображенні, як професійний OSINT-аналітик. Опиши все українською мовою. Не використовуй списки в описі. Суворо відповідай тільки українською мовою."
-)
+IMAGE_DESCRIPTION_SYSTEM_PROMPT = ("You job is to describe image and if there is a text, to extract text from the images I provide you."
+"Text should be same as in the images. Return all in Ukrainian")
 
 # Системний промпт для звичайного режиму роботи асистента
 # Містить детальні інструкції щодо обробки запитів користувача та роботи з контекстом

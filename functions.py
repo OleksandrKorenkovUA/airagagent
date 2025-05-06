@@ -1,6 +1,9 @@
 # Імпорт необхідних бібліотек для роботи з Milvus - векторною базою даних для пошуку схожих документів
 from milvus_model.hybrid import BGEM3EmbeddingFunction
 import re # для регулярних виразів
+import subprocess
+import numpy as np
+import subprocess
 from langchain_huggingface.llms import HuggingFacePipeline
 from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
 # Імпорт бібліотек для роботи з LLM (великими мовними моделями)
@@ -13,6 +16,7 @@ from pymilvus.model.reranker import BGERerankFunction  # Функція для �
 # Імпорт для обробки тексту та зображень
 from transformers import pipeline as hf_pipeline  # Конвеєр для обробки тексту та зображень
 # Імпорт для роботи з документами різних форматів
+import soundfile as sf  # Для читання PDF-файлів
 from PyPDF2 import PdfReader  # Для читання PDF-файлів
 from docx import Document as DocxDocument  # Для роботи з Word-документами
 # Імпорт стандартних бібліотек Python
@@ -66,15 +70,23 @@ def create_bge_m3_embeddings():
     
     return bge_m3_ef
 
+    
+@st.cache_resource(show_spinner="Завантажуємо україномовну модель…")
 def create_ukr_llm():
-    """Створює та повертає українську мовну модель на основі MamayLM-Gemma для генерації тексту"""
-    return hf_pipeline(
-        task="text-generation",  # Завдання - генерація тексту
-        model="INSAIT-Institute/MamayLM-Gemma-2-9B-IT-v0.1",  # Українська модель
-        torch_dtype=torch.bfloat16,  # Використання bfloat16 для оптимізації пам'яті
-        device_map="auto",  # Автоматичне визначення пристрою (CPU/GPU)
+    model_id = "INSAIT-Institute/MamayLM-Gemma-2-9B-IT-v0.1"
+    tokenizer = AutoTokenizer.from_pretrained(model_id)
+    model = AutoModelForCausalLM.from_pretrained(
+        model_id,
+        device_map="auto",      
+        torch_dtype=torch.bfloat16 if torch.cuda.is_available() else torch.float32
     )
-
+    return pipeline(
+        "text-generation",
+        model=model,
+        tokenizer=tokenizer,
+        max_new_tokens=512,
+        do_sample=False,
+    )
 
 
 def create_llm(model_name):
@@ -255,12 +267,12 @@ def process_video(url: str, video_dir: str, model_size: str):
                     "video_id": video_id}  # ID відео
             logger.info(f"Знайдено відео: {video_info['title']} ({video_info['duration']} сек)")  # Логування
 
-            final_video_path = video_dir_path / f"{safe_title}.mp4"  # Шлях до відео
+            file_path = video_dir_path / f"{safe_title}.mp4"  # Шлях до відео
             final_audio_path = video_dir_path / f"{safe_title}.mp3"  # Шлях до аудіо
             transcript_path = video_dir_path / f"{safe_title}_transcript.txt"  # Шлях до транскрипції
             
             logger.info(f"Шляхи до файлів:")  # Логування
-            logger.info(f"Відео: {final_video_path}")  # Логування
+            logger.info(f"Відео: {file_path}")  # Логування
             logger.info(f"Аудіо: {final_audio_path}")  # Логування
             logger.info(f"Транскрипція: {transcript_path}")  # Логування
 
@@ -279,19 +291,19 @@ def process_video(url: str, video_dir: str, model_size: str):
             }
 
             with yt_dlp.YoutubeDL(ydl_opts) as ydl_download:
-                if not final_video_path.exists() or not final_audio_path.exists():
+                if not file_path.exists() or not final_audio_path.exists():
                     logger.info("Починаємо завантаження відео...")  # Логування
                     ydl_download.download([url])  # Завантаження відео
                     logger.info("Завантаження завершено")  # Логування
                 else:
                     logger.info("Файли вже існують, пропускаємо завантаження")  # Логування
 
-            if not final_video_path.exists():
-                logger.error(f"Відео файл не знайдено після завантаження: {final_video_path}")  # Логування помилки
-                raise FileNotFoundError(f"Відео файл не знайдено: {final_video_path}")  # Виклик помилки
+            if not file_path.exists():
+                logger.error(f"Відео файл не знайдено після завантаження: {file_path}")  # Логування помилки
+                raise FileNotFoundError(f"Відео файл не знайдено: {file_path}")  # Виклик помилки
 
             logger.info("Починаємо транскрибацію...")  # Логування
-            result = whisper_model.transcribe(str(final_video_path))
+            result = whisper_model.transcribe(str(file_path))
             placeholder = st.empty()
             answer = ''
             for ch in result["text"]:
@@ -304,44 +316,79 @@ def process_video(url: str, video_dir: str, model_size: str):
                 f.write(transcript)  # Запис транскрипції у файл
             logger.info(f"Транскрипцію збережено")  # Логування
 
-            logger.info("Підготовка тексту...")  # Логування
-            texts = prepare_text(transcript)  # Підготовка тексту
-            logger.info(f"Текст підготовлено, довжина: {len(texts)}")  # Логування
-            
-            logger.info("Розбиття тексту на частини...")  # Логування
-            texts = chunk_text(texts)  # Розбиття тексту на частини
-            logger.info(f"Текст розбито на {len(texts)} частин")  # Логування
-
-            for i, text_chunk in enumerate(texts):
-                chunk = {
-                    "pk": i,  # Первинний ключ
-                    "title": video_info["title"],  # Назва відео
-                    "uploader": video_info["uploader"],  # Автор відео
-                    "duration": video_info["duration"],  # Тривалість відео
-                    "upload_date": video_info["upload_date"],  # Дата завантаження
-                    "view_count": video_info["view_count"],  # Кількість переглядів
-                    "like_count": video_info["like_count"],  # Кількість лайків
-                    "description": text_chunk,  # Опис (частина тексту)
-                    "text": text_chunk,  # Текст частини
-                    "metadata": {
-                        "video_id": video_id,  # ID відео
-                        "timestamp": dt.now().isoformat(),  # Часова мітка
-                        "url": url,  # URL відео
-                        "video_path": str(final_video_path),  # Шлях до відео
-                        "audio_path": str(final_audio_path),  # Шлях до аудіо
-                        "transcript_path": str(transcript_path)  # Шлях до транскрипції
-                    }
-                }
-                video_chunks.append(chunk)  # Додавання частини до списку
-
-            logger.info(f"Створено {len(video_chunks)} документів")  # Логування
-            return video_chunks, transcript, final_video_path, safe_title, video_id, title, unique_video_id, info, unique_safe_title, url 
+            return  transcript, file_path, title, unique_video_id
     
 
     except Exception as e:
         logger.error(f"Помилка при обробці відео: {str(e)}", exc_info=True)  # Логування помилки
         raise
 
+
+def build_video_json(
+    txt: str,
+    meta: Dict[str, Any],
+    file_path: str,
+    original_filename: str,
+    chunk_size: int = 1024,
+    overlap: int = 512,
+) -> Dict[str, Any]:
+    """
+    Перетворює розшифровку відео в структуру JSON для зберігання в Milvus,
+    включаючи метадані відео та розбиття тексту на частини
+    """
+    file_path = str(file_path)  # Перетворення шляху на рядок
+    original_uuid = hashlib.sha256(txt.encode()).hexdigest()  # Створення унікального ID
+    doc_id = f"vid_{meta['video_id']}"  # Детермінований ID
+    chunks = chunk_text(txt, size=chunk_size, overlap=overlap)  # Розбиття тексту на частини
+    upload_date = dt.now().isoformat()  # Поточна дата та час
+
+    return {
+        "doc_id": doc_id,
+        "original_uuid": original_uuid,
+        "title": meta.get("title", ""),
+        "video_meta": {                               # всі метадані відео
+            "video_id":     meta["video_id"],
+            "title":        meta.get("title", ""),
+            
+        },
+        "content": txt,
+        "chunks": [
+            {
+                "chunk_id":       f"{doc_id}_chunk_{i}",
+                "original_index": i,
+                "content":        c,
+                "file_path":      file_path,
+                "file_name":      original_filename,
+                "upload_date":    upload_date,
+            }
+            for i, c in enumerate(chunks)
+        ],
+    }
+
+
+
+
+def extract_audio_from_video(video_path: str) -> bytes:
+    """
+    Run FFmpeg to decode the audio track to 16 kHz, mono, 16-bit PCM,
+    then convert to float32 in [-1.0, +1.0] for Whisper.
+    """
+    cmd = [
+        "ffmpeg", "-nostdin", "-y",
+        "-i", video_path,
+        "-f", "s16le", "-ac", "1", "-acodec", "pcm_s16le", "-ar", "16000",
+        "pipe:1"
+    ]
+    # Capture stdout, suppress stderr noise
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    pcm_bytes, _ = proc.communicate()
+    if proc.returncode != 0:
+        raise RuntimeError(f"FFmpeg exited with code {proc.returncode}")
+
+    # Interpret bytes as int16 little-endian, then scale to float32
+    audio_int16 = np.frombuffer(pcm_bytes, dtype=np.int16)
+    audio_float = audio_int16.astype(np.float32) / 32768.0
+    return audio_float
 
 # Функції для екстракції даних з різних типів файлів
 def data_extraction(path):
@@ -467,54 +514,6 @@ def build_image_json(text: str, file_path: str, original_filename: str) -> dict:
     }
 
 
-
-def build_video_json(
-    txt: str,
-    meta: Dict[str, Any],
-    file_path: str,
-    original_filename: str,
-    chunk_size: int = 1024,
-    overlap: int = 256,
-) -> Dict[str, Any]:
-    """
-    Перетворює розшифровку відео в структуру JSON для зберігання в Milvus,
-    включаючи метадані відео та розбиття тексту на частини
-    """
-    file_path = str(file_path)  # Перетворення шляху на рядок
-    original_uuid = hashlib.sha256(txt.encode()).hexdigest()  # Створення унікального ID
-    doc_id = f"vid_{meta['unique_video_id']}"  # Детермінований ID
-    chunks = chunk_text(txt, size=chunk_size, overlap=overlap)  # Розбиття тексту на частини
-    upload_date = dt.now().isoformat()  # Поточна дата та час
-
-    return {
-        "doc_id": doc_id,
-        "original_uuid": original_uuid,
-        "video_meta": {                               # всі метадані відео
-            "video_id":     meta["video_id"],
-            "unique_video_id":    meta["unique_video_id"],
-            "title":        meta.get("title", ""),
-            "uploader":     meta.get("uploader", ""),
-            "duration":     meta.get("duration", 0),
-            "upload_date":  meta.get("upload_date", ""),
-            "view_count":   meta.get("view_count", 0),
-            "like_count":   meta.get("like_count", 0),
-            "url":          meta.get("url", ""),
-        },
-        "content": txt,
-        "chunks": [
-            {
-                "chunk_id":       f"{doc_id}_chunk_{i}",
-                "original_index": i,
-                "content":        c,
-                "file_path":      file_path,
-                "file_name":      original_filename,
-                "upload_date":    upload_date,
-            }
-            for i, c in enumerate(chunks)
-        ],
-    }
-
-
 def init_db():
     """
     Ініціалізує базу даних, створюючи таблицю history, якщо вона не існує.
@@ -565,30 +564,13 @@ def log_interaction(mode, query, answer):
 def get_whisper(model_size: str = "base"):
     return whisper.load_model(model_size, device="cuda" if torch.cuda.is_available() else "cpu")
 
-
-""" 
-@st.cache_data(show_spinner="Транскрибуємо відео…")
-def fetch_and_transcribe(uploaded_file: str, model_size: str):
-    ydl_opts = {"quiet": True}
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(uploaded_file, download=False)
-        title = info.get("title", "video")
-        safe = clean_filename(title)
-        unique_safe_title = f"{safe}_{hashlib.md5(uploaded_file.encode()).hexdigest()[:8]}"
-        video_id = extract_video_id(uploaded_file)
-        unique_video_id = f"{video_id}_{hashlib.md5(uploaded_file.encode()).hexdigest()[:8]}"
-        file_path = os.path.join("video", f"{safe}_{unique_video_id}.mp4")
-    txt = process_video(uploaded_file, "video", get_whisper(model_size), logging.getLogger(__name__))[1]
-    return txt, file_path, safe, video_id,  title, unique_video_id, info, unique_safe_title, uploaded_file
-"""
-
 def build_audio_json(
     txt: str,
     meta: Dict[str, Any],
     file_path: str,
     original_filename: str,
     chunk_size: int = 1024,
-    overlap: int = 256,
+    overlap: int = 512,
 ) -> Dict[str, Any]:
     """
     Формирует единый JSON для аудио:
@@ -649,7 +631,6 @@ def process_audio(filepath: str, model_size: str, dir_name: str, title: str) -> 
     with open(transcript_path, "w", encoding="utf-8") as f:
         f.write(transcript)
     logger.info(f"Транскрипт збережено: {transcript_path}")
-
     return transcript
 
 
@@ -804,64 +785,63 @@ def chat_audio_mode(collection_name, llm_option):
             log_interaction(st.session_state.current_mode, q, answer)
             st.session_state.messages.append(dict(role="assistant", content=answer))
 
+def video_mode(collection_name: str, summary: bool):
+    st.session_state.current_mode = "video"
+    st.subheader("Video Processing")
+    col1, col2 = st.columns(2)
+    with col1:
+        url = st.text_input("Enter YouTube URL", key="video_url")
+    with col2:
+        uploaded_video = st.file_uploader(
+            "Upload local video", type=["mp4","mov","avi","mpeg"],key="video_file")
+    model_size = st.selectbox("Whisper model",["tiny","base","small","medium","large"],index=1)
 
+    if st.button("Process Video"):
+        if uploaded_video is not None:
+            video_dir = "video"
+            Path(video_dir).mkdir(exist_ok=True)
+            title = uploaded_video.name
+            unique_video_id = f"{title}_{hashlib.md5(url.encode()).hexdigest()[:8]}"
+            file_path = os.path.join(video_dir, uploaded_video.name)
+            with open(file_path,"wb") as f: 
+                f.write(uploaded_video.getbuffer())
+            raw = extract_audio_from_video(file_path)            # NumPy array
+            wav_path = os.path.join(video_dir, f"{title}.wav")
+            sf.write(wav_path, raw, samplerate=16000)
+            txt = process_audio(wav_path, model_size, video_dir, title)
 
-
-def video_mode(collection_name, summary):
-    print('Summary in video mode', summary)
-    url = st.text_input("Введіть URL відео")
-    model_size = st.selectbox("Модель Whisper:", ["tiny", "base", "small", "medium", "large"], index=1)
-    if url and st.button("Обробити"):
-        video_chunks, txt, file_path, safe, video_id, title, unique_video_id, info, unique_safe_title, uploaded_file = process_video(url, "video", model_size)
-        #txt, file_path, safe, video_id, title, unique_video_id, info, unique_safe_title, uploaded_file = fetch_and_transcribe(url, model_size)
-        video_meta = {
-            "video_id": video_id,
-            "unique_video_id": unique_video_id,
-            "title": title,
-            "uploader": info.get("uploader", ""),
-            "duration": info.get("duration", 0),
-            "upload_date": info.get("upload_date", ""),
-            "view_count": info.get("view_count", 0),
-            "like_count": info.get("like_count", 0),
-            "url": uploaded_file,
-            "file_path": file_path,
-            "file_name": unique_safe_title,
-            "upload_date": info.get("upload_date", ""),
-        }
-        txt = prepare_text(txt)
-        if st.session_state.video_summary and not st.session_state.video_context_text['context']:
-            llm = create_llm(st.session_state.llm_option)
-            summary = summarise_transcript(txt, llm)
-            summary = remove_think(summary) # видаляє дужки з тексту
-            st.session_state.video_context_text['context'] = summary
-        video_json = build_video_json(txt, video_meta, file_path, safe)
-        st.session_state['last_video_json'] = video_json
-        st.session_state.video_processed = True
-
-    
-
-    # Після рендеру блоку відео подальший код не потрібен
-    dense_ef = create_bge_m3_embeddings()
-    standard_retriever = VideoHybridRetriever(
-    client=st.session_state.milvus_client,
-    collection_name=collection_name,
-    dense_embedding_function=dense_ef,)
-    if st.session_state.get('video_processed'):
-        video_json = st.session_state['last_video_json']
-        standard_retriever.build_collection()
-        for ch in video_json["chunks"]:
+        elif url:
+            txt, file_path, title, unique_video_id = process_video(url,"video",model_size)
+        txt_clean = prepare_text(txt)
+        if summary and not st.session_state.video_context_text['context']:
+            summ = remove_think(summarise_transcript(txt_clean, create_llm(st.session_state.llm_option)))
+            st.session_state.video_context_text['context']=summ
+        video_meta={"video_id": unique_video_id,
+                    "title":title,
+                    "url":url,
+                    "file_path":file_path, 
+                    "upload_date":dt.now().isoformat(),
+                    }
+        video_json=build_video_json(txt_clean,video_meta,file_path, title)
+        dense_ef=create_bge_m3_embeddings()
+        retr=VideoHybridRetriever(client=st.session_state.milvus_client, collection_name=collection_name,
+                                   dense_embedding_function=dense_ef)
+        retr.build_collection()
+        for chunk in video_json["chunks"]:
             metadata = {
                 **video_json["video_meta"],
                 "doc_id":        video_json["doc_id"],
                 "original_uuid": video_json["original_uuid"],
-                "chunk_id":      ch["chunk_id"],
-                "original_index": ch["original_index"],
-                "file_path":      ch["file_path"],
-                "file_name":      ch["file_name"],
-                "upload_date":    ch["upload_date"],
-                }
-            standard_retriever.upsert_data(ch["content"], metadata)
-        st.session_state.video_processed = True
+                "chunk_id":      chunk["chunk_id"],
+                "original_index": chunk["original_index"],
+                "file_path":      chunk["file_path"],
+                "file_name":      chunk["file_name"],
+                "upload_date":    chunk["upload_date"],
+            }
+            retr.upsert_data(chunk["content"], metadata)
+        st.session_state.last_video_json=video_json
+        st.session_state.video_processed=True
+        st.success("Video processed and uploaded 🔄")
 
 def chat_video_mode(collection_name, llm_option):
     if st.session_state.video_context_text['context']:
@@ -935,7 +915,6 @@ def chat_video_mode(collection_name, llm_option):
             log_interaction(st.session_state.current_mode, q, answer)
             st.session_state.messages.append(dict(role="assistant", content=answer))
 
-
 def image_mode(collection_name, summary = True):
     st.session_state.current_mode = "image"
     st.subheader("Завантаження зображень")
@@ -982,23 +961,16 @@ def image_mode(collection_name, summary = True):
             unique_name = f"{uuid.uuid4().hex}{file_ext}"
 
             print(unique_name, 'unique_name')
-            
-            # Зберігаємо в директорії data (як було раніше)
-            data_path = os.path.join("data", unique_name)
-            print(data_path, 'data_path')
-            with open(data_path, "wb") as f:
-                f.write(img_file.getbuffer())
-            st.success(f"Файл {img_file.name} збережено як {data_path}")
-            st.session_state.image_processed = True
                     
             # Зберігаємо копію в директорії images
             image_path = os.path.join(image_dir, unique_name)
             with open(image_path, "wb") as f:
                 f.write(img_file.getbuffer())
             st.success(f"Копію файлу збережено в {image_path}")
+            st.session_state.image_processed = True
 
             # ---------- запись в Milvus ----------
-            raw = build_image_json(caption, data_path, img_file.name)
+            raw = build_image_json(caption, image_path, img_file.name)
             if isinstance(raw, dict):
                 docs = [raw]
             elif isinstance(raw, list):
@@ -1336,14 +1308,11 @@ def chat_document_mode(collection_name, llm_option):
                     system = UKR_SYSTEM_PROMPT
                     prompt_text = system + "\n\n" + query + "\n---\n" + best
                     # Викликаємо HuggingFace pipeline, який очікує рядок
-                    gen = st.session_state.ukr_generator(
-                            [
-                                {"role": "user", "content": prompt_text}
-                            ],
-                            max_new_tokens=512,
-                            do_sample=False)
+                    gen = st.session_state.ukr_generator(prompt_text, max_new_tokens=512, do_sample=False)
                     # Результат — список з одним словником із ключем "generated_text"
                     answer = gen[0]["generated_text"]
+                    st.markdown(f"**Answer:** {answer}")
+                    st.markdown(f"**lENG:** {len(answer)}")
                 else:   
                     placeholder = st.empty()
                     answer = ""

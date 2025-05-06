@@ -1,4 +1,5 @@
 # Імпорт необхідних бібліотек
+from transformers import AutoModelForCausalLM, GenerationConfig
 import streamlit as st  # Для створення інтерактивного веб-інтерфейсу
 import os  # Для роботи з файловою системою та операційною системою
 import uuid  # Для генерації унікальних ідентифікаторів для файлів та сесій
@@ -101,7 +102,10 @@ if 'image_summary' not in st.session_state:
     st.session_state.image_summary = False  # Прапорець відображення узагальненої інформації
 if 'document_summary' not in st.session_state:
     st.session_state.document_summary = False  # Прапорець відображення узагальненої інформації
-
+if 'youtube_video' not in st.session_state:
+    st.session_state.youtube_video = False
+if 'local_video' not in st.session_state:
+    st.session_state.local_video = False
 
 
 def select_database():
@@ -161,7 +165,7 @@ def select_image():
     st.session_state.start_chat = False  # Скидання прапорця початку чату
     st.session_state.database_selected = False  # Скидання прапорця вибору бази даних
     st.session_state.image_processed = False
-    st.session_state.audio_selected  # Скидання прапорця обробки зображення
+    st.session_state.audio_selected = False  # Скидання прапорця обробки зображення
 
 def select_audio():
     """Функція для вибору режиму роботи з аудіо.
@@ -233,7 +237,8 @@ with st.sidebar:
         ("qwen3:14b", "Україномовну", "gemma3:27b", "gemma3:12b", "qwen3:30b", "qwen3:30b-a3b"),)  # Опції вибору моделі
     st.session_state.llm_option = llm_option  # Збереження вибраної моделі
     st.markdown(f'Ви обрали модель: {st.session_state.llm_option}')
-    if st.session_state.llm_option == "Україномовну":  # Якщо вибрана україномовна модель
+    if st.session_state.llm_option == "Україномовну":
+        # Якщо вибрана україномовна модель
         st.session_state.ukr_generator = create_ukr_llm()  # Створення україномовної моделі
         st.session_state.llm_option = llm_option  # Повторне збереження вибраної моделі
 
@@ -273,7 +278,7 @@ print(torch.cuda.is_available(), 'cuda')
 if st.session_state.start_chat:
     collection_name = st.session_state.collection_name  # Отримання назви колекції
     st.session_state.mode = st.session_state.current_mode  # Встановлення режиму
-    st.session_state.doc_mode == "main_chat"  # Якщо режим перегляду документа
+    st.session_state.doc_mode = "main_chat"  # Якщо режим перегляду документа
     st.title("Пошук по колекції")  # Заголовок
     main_chat(collection_name)
 
