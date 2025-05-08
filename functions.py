@@ -230,7 +230,6 @@ def generate_caption(image_path: str):
     print(output[0]["generated_text"][-1]["content"])  # Виведення відповіді
 
 
-@st.cache_data(show_spinner="Транскрибуємо відео…")
 def process_video(url: str, video_dir: str, model_size: str):
     """Обробляє відео з YouTube: завантажує, транскрибує та розбиває на частини для подальшого аналізу"""
     whisper_model = get_whisper(model_size)  # Отримання моделі Whisper (кешується)
@@ -305,11 +304,9 @@ def process_video(url: str, video_dir: str, model_size: str):
             logger.info("Починаємо транскрибацію...")  # Логування
             result = whisper_model.transcribe(str(file_path))
             placeholder = st.empty()
-            answer = ''
-            for ch in result["text"]:
-                answer += ch
-                placeholder.text(answer)   # Транскрибація відео
-            transcript = result["text"]  # Отримання тексту транскрипції
+              # Транскрибація відео
+            transcript = result["text"]
+            placeholder.text(transcript)   # Отримання тексту транскрипції
             logger.info(f"Транскрибація завершена, отримано {len(transcript)} символів")  # Логування
             
             with open(transcript_path, 'w', encoding='utf-8') as f:
@@ -607,7 +604,6 @@ def build_audio_json(
     }
 
 
-@st.cache_data(show_spinner="Транскрибуємо аудіо…")
 def process_audio(filepath: str, model_size: str, dir_name: str, title: str) -> str:
     """
     Транскрибує аудіо і повертає чистый текст.
@@ -618,14 +614,12 @@ def process_audio(filepath: str, model_size: str, dir_name: str, title: str) -> 
     logger = logging.getLogger(__name__)
     logger.info(f"Транскрибація аудіо: {filepath}")
 
+# --- Транскрибація аудіо ---
+#Для того аби змусити модель повертати весь текст, навіть якщо там на початку є музіка, потрібно щоб з початку файлу був голос а не музика та щоб формат файлу ьув якісний (wav):
     result = whisper_model.transcribe(str(filepath))
     placeholder = st.empty()
-    answer = ''
-    for ch in result["text"]:
-        answer += ch
-        placeholder.text(answer) 
     transcript = result["text"]
-
+    placeholder.text(transcript) 
     # Сохраняем транскрипт рядом с файлом
     transcript_path = os.path.join(dir_name, f"{title}_transcript.txt")
     with open(transcript_path, "w", encoding="utf-8") as f:
@@ -681,9 +675,8 @@ def audio_mode(collection_name: str, summary: bool):
     cleaned = prepare_text(transcript)
     if summary and not st.session_state.audio_context_text.get("context"):
         llm = create_llm("qwen3:14b")
-        summ = summarise_transcript(cleaned, llm)
-        summ = remove_think(summ) # видаляє дужки з тексту
-        st.session_state.audio_context_text["context"] = summ
+        summary = summarise_transcript(cleaned, llm)
+        st.session_state.audio_context_text["context"] = summary
 
     # --- Построение единого JSON ---
     audio_json = build_audio_json(
@@ -729,6 +722,7 @@ def chat_audio_mode(collection_name, llm_option):
          
     for m in st.session_state.messages:
         with st.chat_message(m["role"]): st.markdown(m["content"])
+    placeholder = st.empty()
 
     # ввод користувача
     if q := st.chat_input("Ваш запит"):
@@ -742,9 +736,6 @@ def chat_audio_mode(collection_name, llm_option):
             collection_name=collection_name,
             dense_embedding_function=dense_ef,) 
             retr.build_collection()
-            if st.session_state.audio_context_text['context']:
-                q = q + "\n---\n" + st.session_state.audio_context_text['context']
-                print(q, 'q + context')
             chunks = retr.search(q, mode="hybrid", k=3)
             ctx = "\n---\n".join([c["content"] for c in chunks]) if chunks else ""
             user_query = q+"\n---\n"+ctx
@@ -764,7 +755,7 @@ def chat_audio_mode(collection_name, llm_option):
             else:   
                 placeholder = st.empty()
                 answer = ""
-                prompt = create_stream_prompt(REGULAR_SYSTEM_PROMPT, q, ctx)
+                prompt = create_stream_prompt(st.session_state.system_prompt, q, ctx)
                 model = st.session_state.llm_option
                 for part in query_ollama(prompt, model):
                     chunk = part["message"]["content"]
@@ -814,8 +805,8 @@ def video_mode(collection_name: str, summary: bool):
             txt, file_path, title, unique_video_id = process_video(url,"video",model_size)
         txt_clean = prepare_text(txt)
         if summary and not st.session_state.video_context_text['context']:
-            summ = remove_think(summarise_transcript(txt_clean, create_llm(st.session_state.llm_option)))
-            st.session_state.video_context_text['context']=summ
+            summary = summarise_transcript(txt_clean, create_llm(st.session_state.llm_option))
+            st.session_state.video_context_text['context']=summary
         video_meta={"video_id": unique_video_id,
                     "title":title,
                     "url":url,
@@ -851,6 +842,7 @@ def chat_video_mode(collection_name, llm_option):
          
     for m in st.session_state.messages:
         with st.chat_message(m["role"]): st.markdown(m["content"])
+    placeholder = st.empty()
 
     # ввод користувача
  
@@ -866,9 +858,6 @@ def chat_video_mode(collection_name, llm_option):
             collection_name=collection_name,
             dense_embedding_function=dense_ef,) 
             retr.build_collection()
-            if st.session_state.video_context_text['context']:
-                q = q + "\n---\n" + st.session_state.video_context_text['context']
-                print(q, 'q + context')
             chunks = retr.search(q, mode="hybrid", k=3)
             ctx = "\n---\n".join([c["content"] for c in chunks]) if chunks else ""
             user_query = q+"\n---\n"+ctx
@@ -895,7 +884,7 @@ def chat_video_mode(collection_name, llm_option):
             else:   
                 placeholder = st.empty()
                 answer = ""
-                prompt = create_stream_prompt(REGULAR_SYSTEM_PROMPT, q, ctx)
+                prompt = create_stream_prompt(st.session_state.system_prompt, q, ctx)
                 model = st.session_state.llm_option
                 for part in query_ollama(prompt, model):
                     chunk = part["message"]["content"]
@@ -953,7 +942,7 @@ def image_mode(collection_name, summary = True):
                 if summary and not st.session_state.image_context_text['context']:
                     summary  = summarise_transcript(caption, llm)
                     summary = remove_think(summary) # видаляє дужки з тексту
-                    print(summary, 'summary')
+                    st.session_state.image_context_text['context'] = summary
   
             # ---------- сохранение ----------
             file_ext = os.path.splitext(img_file.name)[1]
@@ -1024,6 +1013,7 @@ def chat_image_mode(collection_name, llm_option):
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
+    placeholder = st.empty()
 
     # Ввод пользователя
     if q := st.chat_input("Ваш запит"):
@@ -1040,9 +1030,6 @@ def chat_image_mode(collection_name, llm_option):
                 dense_embedding_function=dense_ef,
             )
             retriever.build_collection()
-            if st.session_state.audio_context_text['context']:
-                q = q + "\n---\n" + st.session_state.audio_context_text['context']
-                print(q, 'q + context')
             results = retriever.search(q, mode="hybrid", k=3)
             if not results:
                 answer = "На жаль, не знайшов релевантної інформації."
@@ -1065,7 +1052,7 @@ def chat_image_mode(collection_name, llm_option):
                 else:
                     placeholder = st.empty()
                     answer = ""
-                    prompt = create_stream_prompt(REGULAR_SYSTEM_PROMPT, q, ctx)
+                    prompt = create_stream_prompt(st.session_state.system_prompt, q, ctx)
                     model = st.session_state.llm_option
                     for part in query_ollama(prompt, model):
                         chunk = part["message"]["content"]
@@ -1109,7 +1096,7 @@ def main_chat(collection_name):
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):  # Створення блоку повідомлення
             st.markdown(msg["content"])  # Відображення тексту повідомлення
-
+    placeholder = st.empty()
     # Введення користувача
     if query := st.chat_input("Введіть ваше запитання...", key="chat_input"):
         # Додавання повідомлення користувача в історію
@@ -1128,13 +1115,11 @@ def main_chat(collection_name):
                 dense_embedding_function=dense_ef,  # Функція вбудовування
             )
             # Пошук 5 найбільш схожих фрагментів
-            results = retriever.search(query, mode="hybrid", k=5)
+            results = retriever.search(query, mode="hybrid", k=3)
             if not results:  # Якщо результати не знайдені
                 answer = "На жаль, не знайшов релевантної інформації."
             else:
-                best = ""
-                for i in results:
-                    best += i["content"]
+                best = "\n".join(r["content"] for r in results) if results else ""
                 user_query = query+"\n---\n"+best  # Формування запиту з контекстом
                 if st.session_state.llm_option == "Україномовну":  # Якщо вибрана україномовна модель
                     chat = [
@@ -1147,14 +1132,14 @@ def main_chat(collection_name):
                 # Формування промпту та виклик LLM
                     placeholder = st.empty()
                     answer = ""
-                    prompt = create_stream_prompt(REGULAR_SYSTEM_PROMPT, query, best)
+                    prompt = create_stream_prompt(st.session_state.system_prompt, query, best)
                     model = st.session_state.llm_option
                     for part in query_ollama(prompt, model):
                         chunk = part["message"]["content"]
                         # по‑символьно додаємо та одразу оновлюємо плейсхолдер
                         for ch in chunk:
                             answer += ch
-                            placeholder.text(answer)   # або .markdown(caption)
+                            placeholder.text(answer) 
             with st.expander("Показати використаний контекст"):  # Створення розгортаємого блоку
                     for i in results:
                         st.markdown(
@@ -1167,7 +1152,6 @@ def main_chat(collection_name):
             
             st.session_state.messages.append({"role": "assistant", "content": answer})  # Додавання відповіді в історію
             log_interaction(st.session_state.current_mode or "chat", query, answer)  # Логування взаємодії
-
 
 def document_mode(collection_name, summary):
     uploaded_file = st.file_uploader("Завантажте документ", type=['pdf', 'xlsx', 'xls', 'doc', 'docx', 'md'])
@@ -1271,7 +1255,7 @@ def chat_document_mode(collection_name, llm_option):
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
-
+    placeholder = st.empty()
     # Ввод пользователя
     if query := st.chat_input("Введіть ваше запитання...", key="document_chat_input"):
     # Добавляем сообщение пользователя в историю
@@ -1291,9 +1275,6 @@ def chat_document_mode(collection_name, llm_option):
             )
             retriever.build_collection()          # ← додали
             # Ищем 5 наиболее похожих чанков
-            if st.session_state.document_context_text['context']:
-                query = query + "\n---\n" + st.session_state.document_context_text['context']
-                print(query, 'query + context')
             results = retriever.search(query, mode="hybrid", k=3)
             if not results:
                 answer = "На жаль, не знайшов релевантної інформації."
@@ -1302,7 +1283,7 @@ def chat_document_mode(collection_name, llm_option):
                 for i in results:
                     best += i["content"]
                 # Формируем промпт и вызываем LLM
-                prompt = create_prompt(REGULAR_SYSTEM_PROMPT)
+                prompt = create_prompt(st.session_state.system_prompt)
                 if llm_option == "Україномовну":
                     # Формуємо єдиний рядок для генерації
                     system = UKR_SYSTEM_PROMPT
@@ -1316,7 +1297,7 @@ def chat_document_mode(collection_name, llm_option):
                 else:   
                     placeholder = st.empty()
                     answer = ""
-                    prompt = create_stream_prompt(REGULAR_SYSTEM_PROMPT, query, best)
+                    prompt = create_stream_prompt(st.session_state.system_prompt, query, best)
                     model = st.session_state.llm_option
                     for part in query_ollama(prompt, model):
                         chunk = part["message"]["content"]
@@ -1336,7 +1317,6 @@ def chat_document_mode(collection_name, llm_option):
                             )
             st.session_state.messages.append({"role": "assistant", "content": answer})
             log_interaction(st.session_state.current_mode or "chat", query, answer)
-
 
 def create_summary_prompt() -> ChatPromptTemplate:
     return ChatPromptTemplate.from_messages([

@@ -242,6 +242,16 @@ with st.sidebar:
         st.session_state.ukr_generator = create_ukr_llm()  # Створення україномовної моделі
         st.session_state.llm_option = llm_option  # Повторне збереження вибраної моделі
 
+    system_prompt = st.selectbox(
+        "Який системний промт використовувати?",
+        ("проповедник", "аналитик",),)  # Опції вибору моделі
+    if system_prompt == "проповедник":
+        st.session_state.system_prompt = RELIGIOUS_SYSTEM_PROMPT
+    elif system_prompt == "аналитик":
+        st.session_state.system_prompt = REGULAR_SYSTEM_PROMPT
+    st.markdown(f'Ви обрали режим роботи: {system_prompt}')
+   
+
 
     # Введення назви колекції для роботи
     collection_name = st.text_input("Введи назву колекції")
