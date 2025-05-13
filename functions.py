@@ -67,7 +67,6 @@ def remove_think(text):
 def create_bge_m3_embeddings():
     """Створює функцію для генерації ембедінгів BGE-M3, повертаючи ініціалізований об'єкт EMBEDDER"""
     bge_m3_ef = EMBEDDER  # Використання глобального об'єкта EMBEDDER
-    
     return bge_m3_ef
 
     
@@ -154,11 +153,6 @@ def get_llm_response(chain, question, context):
     return response
 
 
-# Базове налаштування логування для відстеження роботи програми
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-
 def create_dir(dir_name):
     """Створює директорію з вказаною назвою, якщо вона не існує"""
     folder = Path(dir_name)  # Створення об'єкта Path
@@ -200,34 +194,6 @@ def image_to_base64(image):
     img_byte_arr = io.BytesIO()  # Створення буфера для зображення
     image.save(img_byte_arr, format="JPEG")  # Збереження зображення у форматі JPEG
     return base64.b64encode(img_byte_arr.getvalue()).decode("utf-8")  # Кодування в base64
-
-def generate_caption(image_path: str):
-    """Генерує опис для зображення за допомогою моделі Gemma, аналізуючи вміст зображення"""
-
-    pipe = pipeline(
-        "image-text-to-text",  # Тип завдання - генерація тексту на основі зображення
-        model="google/gemma-3-4b-it",  # Модель для використання
-        device="cuda" if torch.cuda.is_available() else "cpu",  # Використання CPU
-        torch_dtype=torch.bfloat16  # Використання bfloat16 для оптимізації пам'яті
-    )
-
-    messages = [
-        {
-            "role": "system",
-            "content": [{"type": "text", "text": "You are a helpful assistant."}]  # Системний промпт
-        },
-        {
-            "role": "user",
-            "content": [
-                {"type": "image", "url": image_path},  # Шлях до зображення
-                {"type": "text", "text": "What animal is on the candy?"}  # Питання про зображення
-            ]
-        }
-    ]
-
-
-    output = pipe(text=messages, max_new_tokens=200)  # Генерація відповіді
-    print(output[0]["generated_text"][-1]["content"])  # Виведення відповіді
 
 
 def process_video(url: str, video_dir: str, model_size: str):
