@@ -3,6 +3,10 @@ from milvus_model.hybrid import BGEM3EmbeddingFunction
 import re # для регулярних виразів
 import subprocess
 import numpy as np
+from pymilvus import Collection
+
+import torch
+torch.classes.__path__ = []
 import subprocess
 from langchain_huggingface.llms import HuggingFacePipeline
 from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
@@ -28,7 +32,6 @@ import logging  # Для логування
 import streamlit as st  # Для створення веб-інтерфейсу
 import ollama  # Для взаємодії з Ollama API
 import json  # Для роботи з JSON
-import torch  # Для роботи з тензорами та нейромережами
 import yt_dlp  # Для завантаження відео з YouTube
 import hashlib  # Для створення хешів
 import whisper  # Для транскрибації аудіо
@@ -45,9 +48,17 @@ from rag import *  # Імпорт всіх функцій з файлу rag.py
 # Налаштування логування для відстеження роботи програми
 logger = logging.getLogger(__name__)
 
+if 'chunk_size' not in st.session_state or st.session_state.chunk_size is None:
+    st.session_state.chunk_size = CHUNK_SIZE
+if 'chunk_overlap' not in st.session_state or st.session_state.chunk_overlap is None:
+    st.session_state.chunk_overlap = OVERLAP
+if 'ret_k_results' not in st.session_state or st.session_state.ret_k_results is None:
+    st.session_state.ret_k_results = RET_K_RESULTS
+
+
 # Ініціалізація моделі для створення ембедінгів (векторних представлень) тексту
 EMBEDDER = BGEM3EmbeddingFunction(
-    model_name="BAAI/bge-m3",  # Назва моделі для ембедінгів
+    model_name=EMBEDING_MODEL,  # Назва моделі для ембедінгів
     device="cuda" if torch.cuda.is_available() else "cpu",        # Використання CPU для обчислень (найбезпечніший варіант)
     use_fp16=False       # Відключення використання половинної точності (fp16)
 )
@@ -72,7 +83,7 @@ def create_bge_m3_embeddings():
     
 @st.cache_resource(show_spinner="Завантажуємо україномовну модель…")
 def create_ukr_llm():
-    model_id = "INSAIT-Institute/MamayLM-Gemma-2-9B-IT-v0.1"
+    model_id = UKRAINIAN_MODEL
     tokenizer = AutoTokenizer.from_pretrained(model_id)
     model = AutoModelForCausalLM.from_pretrained(
         model_id,
@@ -83,7 +94,7 @@ def create_ukr_llm():
         "text-generation",
         model=model,
         tokenizer=tokenizer,
-        max_new_tokens=512,
+        max_new_tokens=MAX_TOKENS,
         do_sample=False,
     )
 
@@ -92,8 +103,8 @@ def create_llm(model_name):
     """Створює екземпляр моделі LLM з вказаною назвою, налаштовуючи температуру для детермінованих відповідей"""
     llm = ChatOllama(
         model=model_name,  # Назва моделі для використання
-        temperature=0,  # Температура 0 для детермінованих відповідей
-        base_url="http://127.0.0.1:11434",  # URL для взаємодії з Ollama API
+        temperature=MODEL_TEMPERATURE,  # Температура 0 для детермінованих відповідей
+        base_url=OLLAMA_URL,  # URL для взаємодії з Ollama API
     )
     return llm
 
@@ -102,9 +113,9 @@ def create_llm(model_name):
 def rerank_search(documents, query, limit=10):
     """Перераховує результати пошуку за допомогою BGE-reranker для покращення релевантності"""
     bge_rf = BGERerankFunction(
-        model_name="BAAI/bge-reranker-v2-m3",  # Модель для переранжування
+        model_name=RERANKER_MODEL,  # Модель для переранжування
         device="cuda" if torch.cuda.is_available() else "cpu",  # Використання CPU
-        top_k=3  # Кількість найкращих результатів для повернення
+        top_k=RERANK_K_RESULTS  # Кількість найкращих результатів для повернення
     )
     reranked_results = bge_rf(query, documents)  # Переранжування результатів
     return reranked_results
@@ -206,7 +217,7 @@ def process_video(url: str, video_dir: str, model_size: str):
     unique_video_id = f"{video_id}_{hashlib.md5(url.encode()).hexdigest()[:8]}"  # Створення унікального ID
     if not video_id:
         raise ValueError("Неправильний URL відео YouTube")  # Перевірка коректності URL
-    logger.info(f"Обробка відео з URL: {url}")  # Логування початку обробки
+    st.markdown(f"Обробка відео з URL: {url}")  # Логування початку обробки
     try:
         # Створюємо об'єкт Path для директорії
         video_dir_path = Path(video_dir)  # Створення об'єкта Path
@@ -216,7 +227,11 @@ def process_video(url: str, video_dir: str, model_size: str):
             logger.info("Отримання інформації про відео...")  # Логування
             info = ydl.extract_info(url, download=False)  # Отримання інформації про відео
             # Отримуємо та очищуємо назву
-            title = info.get("title", "video")  # Отримання назви відео
+            if st.session_state.video_name:
+                title = st.session_state.video_name
+            else:
+                title = info.get("alt_title", "video")  # Отримання назви відео
+            st.markdown(f"Назва відео: {title}")
             safe_title = clean_filename(title)  # Очищення назви
             unique_safe_title = f"{safe_title}_{hashlib.md5(url.encode()).hexdigest()[:8]}"  # Створення унікальної назви
             logger.info(f"Отримано назву відео: {title}, очищена назва: {safe_title}")  # Логування
@@ -292,8 +307,8 @@ def build_video_json(
     meta: Dict[str, Any],
     file_path: str,
     original_filename: str,
-    chunk_size: int = 1024,
-    overlap: int = 512,
+    chunk_size: int = st.session_state.chunk_size,
+    overlap: int = st.session_state.chunk_overlap,
 ) -> Dict[str, Any]:
     """
     Перетворює розшифровку відео в структуру JSON для зберігання в Milvus,
@@ -415,7 +430,7 @@ def prepare_text(text: Any) -> str:
 
     return txt.strip()  # Повернення очищеного рядка
 
-def chunk_text(text: str, size=1024, overlap=512):
+def chunk_text(text: str, size=st.session_state.chunk_size, overlap=st.session_state.chunk_overlap):
     """Розбиває текст на частини вказаного розміру з перекриттям для кращого пошуку"""
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=size,  # Розмір частини
@@ -532,8 +547,8 @@ def build_audio_json(
     meta: Dict[str, Any],
     file_path: str,
     original_filename: str,
-    chunk_size: int = 1024,
-    overlap: int = 512,
+    chunk_size: int = st.session_state.chunk_size,
+    overlap: int = st.session_state.chunk_overlap,
 ) -> Dict[str, Any]:
     """
     Формирует единый JSON для аудио:
@@ -639,6 +654,7 @@ def audio_mode(collection_name: str, summary: bool):
 
     # Подготовка текста к чанкингу
     cleaned = prepare_text(transcript)
+    st.session_state.audio_context_text['context'] = ""
     if summary and not st.session_state.audio_context_text.get("context"):
         llm = create_llm("qwen3:14b")
         summary = summarise_transcript(cleaned, llm)
@@ -702,7 +718,7 @@ def chat_audio_mode(collection_name, llm_option):
             collection_name=collection_name,
             dense_embedding_function=dense_ef,) 
             retr.build_collection()
-            chunks = retr.search(q, mode="hybrid", k=3)
+            chunks = retr.search(q, mode="hybrid", k=st.session_state.ret_k_results)
             ctx = "\n---\n".join([c["content"] for c in chunks]) if chunks else ""
             user_query = q+"\n---\n"+ctx
             if llm_option == "Україномовну":
@@ -714,7 +730,7 @@ def chat_audio_mode(collection_name, llm_option):
                             [
                                 {"role": "user", "content": user_query}
                             ],
-                            max_new_tokens=512,
+                            max_new_tokens=MAX_TOKENS,
                             do_sample=False)
                     # Результат — список з одним словником із ключем "generated_text"
                     answer = gen[0]["generated_text"]
@@ -744,16 +760,17 @@ def chat_audio_mode(collection_name, llm_option):
 
 def video_mode(collection_name: str, summary: bool):
     st.session_state.current_mode = "video"
-    st.subheader("Video Processing")
+    st.subheader("Обробка відео")
     col1, col2 = st.columns(2)
     with col1:
-        url = st.text_input("Enter YouTube URL", key="video_url")
+        url = st.text_input("Введіть посилання на відео в YouTube", key="video_url")
     with col2:
         uploaded_video = st.file_uploader(
             "Upload local video", type=["mp4","mov","avi","mpeg"],key="video_file")
+    st.session_state.video_name = st.text_input('Введіть назву відео')
     model_size = st.selectbox("Whisper model",["tiny","base","small","medium","large"],index=1)
 
-    if st.button("Process Video"):
+    if st.button("Обробка"):
         if uploaded_video is not None:
             video_dir = "video"
             Path(video_dir).mkdir(exist_ok=True)
@@ -770,6 +787,7 @@ def video_mode(collection_name: str, summary: bool):
         elif url:
             txt, file_path, title, unique_video_id = process_video(url,"video",model_size)
         txt_clean = prepare_text(txt)
+        st.session_state.video_context_text['context'] = ""
         if summary and not st.session_state.video_context_text['context']:
             summary = summarise_transcript(txt_clean, create_llm(st.session_state.llm_option))
             st.session_state.video_context_text['context']=summary
@@ -824,7 +842,7 @@ def chat_video_mode(collection_name, llm_option):
             collection_name=collection_name,
             dense_embedding_function=dense_ef,) 
             retr.build_collection()
-            chunks = retr.search(q, mode="hybrid", k=3)
+            chunks = retr.search(q, mode="hybrid", k=st.session_state.ret_k_results)
             ctx = "\n---\n".join([c["content"] for c in chunks]) if chunks else ""
             user_query = q+"\n---\n"+ctx
             #if llm_option == "Україномовну":
@@ -897,7 +915,7 @@ def image_mode(collection_name, summary = True):
 
                 # ollama.chat(..., stream=True) повертає генератор,
                 #   у part["message"]["content"] — черговий фрагмент тексту
-                for part in query_ollama(prompt, "gemma3:12b", img_b64):
+                for part in query_ollama(prompt, IMAGE_DESCRIPTION_MODEL, img_b64):
                     chunk = part["message"]["content"]
                     # по‑символьно додаємо та одразу оновлюємо плейсхолдер
                     for ch in chunk:
@@ -905,6 +923,7 @@ def image_mode(collection_name, summary = True):
                         placeholder.text(caption)   # або .markdown(caption)
                 llm = create_llm(st.session_state.llm_option)
                 print(llm, 'llm')
+                st.session_state.image_context_text['context'] = ""
                 if summary and not st.session_state.image_context_text['context']:
                     summary  = summarise_transcript(caption, llm)
                     summary = remove_think(summary) # видаляє дужки з тексту
@@ -996,7 +1015,7 @@ def chat_image_mode(collection_name, llm_option):
                 dense_embedding_function=dense_ef,
             )
             retriever.build_collection()
-            results = retriever.search(q, mode="hybrid", k=3)
+            results = retriever.search(q, mode="hybrid", k=st.session_state.ret_k_results)
             if not results:
                 answer = "На жаль, не знайшов релевантної інформації."
             else:
@@ -1011,7 +1030,7 @@ def chat_image_mode(collection_name, llm_option):
                                 [
                                     {"role": "user", "content": user_query}
                                 ],
-                                max_new_tokens=512,
+                                max_new_tokens=MAX_TOKENS,
                                 do_sample=False)
                         # Результат — список з одним словником із ключем "generated_text"
                         answer = gen[0]["generated_text"]
@@ -1026,15 +1045,6 @@ def chat_image_mode(collection_name, llm_option):
                         for ch in chunk:
                             answer += ch
                             placeholder.text(answer)   # або .markdown(caption)
-
-                    #llm = create_llm(st.session_state.llm_option)
-                    #print(llm, 'llm')
-                    #chain = create_chain(llm, create_prompt(REGULAR_SYSTEM_PROMPT))
-                    #response = get_llm_response(chain, q, ctx).content
-                    #answer = response.content if hasattr(response, "content") else str(response)
-                    #answer = remove_think(answer)
-
-                    #st.markdown(answer)
                 with st.expander("Показати використаний контекст"):
                     for i in results:
                             st.markdown(
@@ -1080,8 +1090,24 @@ def main_chat(collection_name):
                 collection_name=collection_name,  # Назва колекції
                 dense_embedding_function=dense_ef,  # Функція вбудовування
             )
-            # Пошук 5 найбільш схожих фрагментів
-            results = retriever.search(query, mode="hybrid", k=3)
+            retriever.build_collection()
+            stats = st.session_state.milvus_client.get_collection_stats(st.session_state.collection_name)
+            entity_count = int(stats["row_count"])
+            if entity_count == 0:
+                answer = "На жаль, не знайшов релевантної інформації."
+                metadata = {
+                        "doc_id":          'none',
+                        "original_uuid":  'none',
+                        "chunk_id":      'none',
+                        "original_index": 0,
+                        "content":        'none',
+                        "file_path":      'none',
+                        "file_name":      'none',
+                        "upload_date":    'none',
+                    }
+
+                retriever.upsert_data(answer, metadata)
+            results = retriever.search(query, mode="hybrid", k=st.session_state.ret_k_results)
             if not results:  # Якщо результати не знайдені
                 answer = "На жаль, не знайшов релевантної інформації."
             else:
@@ -1164,7 +1190,7 @@ def document_mode(collection_name, summary):
     )
         txt = prepare_text(raw_str)
         st.markdown(f"**Перші 1000 символів файлу:** \n\n {txt[:1000]}")
-
+        st.session_state.document_context_text['context'] = ""
         if summary and not st.session_state.document_context_text['context']:
             summary = summarise_transcript(txt, create_llm(st.session_state.llm_option))
             summary = remove_think(summary) # видаляє дужки з тексту
@@ -1241,7 +1267,7 @@ def chat_document_mode(collection_name, llm_option):
             )
             retriever.build_collection()          # ← додали
             # Ищем 5 наиболее похожих чанков
-            results = retriever.search(query, mode="hybrid", k=3)
+            results = retriever.search(query, mode="hybrid", k=st.session_state.ret_k_results)
             if not results:
                 answer = "На жаль, не знайшов релевантної інформації."
             else:
@@ -1267,7 +1293,7 @@ def chat_document_mode(collection_name, llm_option):
                     model = st.session_state.llm_option
                     for part in query_ollama(prompt, model):
                         chunk = part["message"]["content"]
-                        # по‑символьно додаємо та одразу оновлюємо плейсхолдер
+                        chunk = remove_think(chunk)
                         for ch in chunk:
                             answer += ch
                             placeholder.text(answer)   # або .markdown(caption)

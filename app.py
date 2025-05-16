@@ -28,6 +28,8 @@ if not os.path.exists("data"):
 # Кожна змінна відповідає за певний стан інтерфейсу або зберігає дані між взаємодіями
 if "database_selected" not in st.session_state:
     st.session_state.database_selected = False  # Прапорець вибору бази даних
+if "video_name" not in st.session_state:
+    st.session_state.video_name = False
 if 'last_video_json' not in st.session_state:
     st.session_state.last_video_json = {}  # Зберігає метадані останнього обробленого відео
 if 'processed_video' not in st.session_state:
@@ -93,7 +95,12 @@ if 'document_context_text' not in st.session_state:
 
 if 'audio_context_text' not in st.session_state:
     st.session_state.audio_context_text = {'context': ''}  # Зберігає контекст для аудіо
-
+if 'chunk_size' not in st.session_state:
+    st.session_state.chunk_size = 0
+if 'chunk_overlap' not in st.session_state:
+    st.session_state.chunk_overlap = 0
+if 'ret_k_results' not in st.session_state:
+    st.session_state.ret_k_results = 0
 if 'video_summary' not in st.session_state:
     st.session_state.video_summary = False  # Прапорець відображення узагальненої інформації
 if 'audio_summary' not in st.session_state:
@@ -127,7 +134,7 @@ def select_document():
     та відповідні прапорці для роботи з документами."""
     reset_chat()  # Скидання стану чату
     st.session_state.description = False  # Вимкнення опису
-    st.session_state.current_mode = "робота з документами"  # Встановлення поточного режиму
+    st.session_state.current_mode = "document_mode"  # Встановлення поточного режиму
     st.session_state.document_selected = True  # Встановлення прапорця вибору документа
     st.session_state.video_selected = False  # Скидання прапорця вибору відео
     st.session_state.image_selected = False  # Скидання прапорця вибору зображення
@@ -143,7 +150,7 @@ def select_video():
     та відповідні прапорці для роботи з відео."""
     reset_chat()  # Скидання стану чату
     st.session_state.description = False  # Вимкнення опису
-    st.session_state.current_mode = "робота з відео"  # Встановлення поточного режиму
+    st.session_state.current_mode = "video_mode"  # Встановлення поточного режиму
     st.session_state.document_selected = False  # Скидання прапорця вибору документа
     st.session_state.video_selected = True  # Встановлення прапорця вибору відео
     st.session_state.image_selected = False  # Скидання прапорця вибору зображення
@@ -158,7 +165,7 @@ def select_image():
     та відповідні прапорці для роботи з зображеннями."""
     reset_chat()  # Скидання стану чату
     st.session_state.description = False  # Вимкнення опису
-    st.session_state.current_mode = "робота з зображеннями"  # Встановлення поточного режиму
+    st.session_state.current_mode = "image_mode"  # Встановлення поточного режиму
     st.session_state.document_selected = False  # Скидання прапорця вибору документа
     st.session_state.video_selected = False  # Скидання прапорця вибору відео
     st.session_state.image_selected = True  # Встановлення прапорця вибору зображення
@@ -173,7 +180,7 @@ def select_audio():
     та відповідні прапорці для роботи з аудіо."""
     reset_chat()  # Скидання стану чату
     st.session_state.description = False  # Вимкнення опису
-    st.session_state.current_mode = "робота з аудіо"  # Встановлення поточного режиму
+    st.session_state.current_mode = "audio_mode"  # Встановлення поточного режиму
     st.session_state.document_selected = False  # Скидання прапорця вибору документа
     st.session_state.video_selected = False  # Скидання прапорця вибору відео
     st.session_state.image_selected = False  # Скидання прапорця вибору зображення
@@ -189,7 +196,7 @@ def start_chat():
     та відповідні прапорці для роботи в режимі чату."""
     reset_chat()  # Скидання стану чату
     st.session_state.description = False  # Вимкнення опису
-    st.session_state.current_mode = "чат"  # Встановлення поточного режиму
+    st.session_state.current_mode = "main_chat"  # Встановлення поточного режиму
     st.session_state.start_chat = True  # Встановлення прапорця початку чату
     st.session_state.document_selected = False  # Скидання прапорця вибору документа
     st.session_state.video_selected = False  # Скидання прапорця вибору відео
@@ -242,15 +249,20 @@ with st.sidebar:
         st.session_state.ukr_generator = create_ukr_llm()  # Створення україномовної моделі
         st.session_state.llm_option = llm_option  # Повторне збереження вибраної моделі
 
-    system_prompt = st.selectbox(
+
+    choise_system_prompt = st.selectbox(
         "Який системний промт використовувати?",
-        ("проповедник", "аналитик",),)  # Опції вибору моделі
-    if system_prompt == "проповедник":
+        ("проповедник", "аналитик",))  # Опції вибору моделі
+    if choise_system_prompt == "проповедник":
         st.session_state.system_prompt = RELIGIOUS_SYSTEM_PROMPT
-    elif system_prompt == "аналитик":
+    elif choise_system_prompt == "аналитик":
         st.session_state.system_prompt = REGULAR_SYSTEM_PROMPT
-    st.markdown(f'Ви обрали режим роботи: {system_prompt}')
+    st.markdown(f'Ви обрали режим роботи: {choise_system_prompt}')
    
+
+    st.select_slider('Розмір фрагменту',  options=[256, 512, 1024, 2048, 4096], key="chunk_size")
+    st.select_slider('Перекриття фрагментів',  options=[128, 256, 512, 1024, 2048], key="chunk_overlap")
+    st.select_slider('Кількість результатів',  options=[1, 5, 10, 20, 30, 40, 50], key="ret_k_results")
 
 
     # Введення назви колекції для роботи
@@ -288,7 +300,6 @@ print(torch.cuda.is_available(), 'cuda')
 if st.session_state.start_chat:
     collection_name = st.session_state.collection_name  # Отримання назви колекції
     st.session_state.mode = st.session_state.current_mode  # Встановлення режиму
-    st.session_state.doc_mode = "main_chat"  # Якщо режим перегляду документа
     st.title("Пошук по колекції")  # Заголовок
     main_chat(collection_name)
 
