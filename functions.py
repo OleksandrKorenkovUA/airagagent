@@ -110,12 +110,12 @@ def create_llm(model_name):
 
 
 
-def rerank_search(documents, query, limit=10):
+def rerank_search(documents, query, k_results):
     """Перераховує результати пошуку за допомогою BGE-reranker для покращення релевантності"""
     bge_rf = BGERerankFunction(
         model_name=RERANKER_MODEL,  # Модель для переранжування
         device="cuda" if torch.cuda.is_available() else "cpu",  # Використання CPU
-        top_k=RERANK_K_RESULTS  # Кількість найкращих результатів для повернення
+        top_k=k_results  # Кількість найкращих результатів для повернення
     )
     reranked_results = bge_rf(query, documents)  # Переранжування результатів
     return reranked_results
@@ -130,11 +130,9 @@ def create_prompt(system_prompt):
     ])
 
 
-def create_stream_prompt(system_prompt, question, context):
+def create_stream_prompt(question, context):
     """Створює шаблон промпту для чат-моделі з системним промптом та місцями для контексту і питання"""
-    prompt_text = (
-    system_prompt +
-    f"\n\nContext:\n{context}\n\nQuestion: {question}")
+    prompt_text = (f"\n\ncontext:\n{context}\n\nquestion: {question}")
     return prompt_text
 
 
@@ -191,11 +189,12 @@ def clean_filename(filename: str) -> str:
     # Видаляємо недопустимі символи для імен файлів
     return re.sub(r'[\\/*?:"<>|]', "", filename)  # Заміна недопустимих символів на порожній рядок
 
-def query_ollama(prompt, model, image_b64=None):
+def query_ollama(system_prompt, prompt, model, image_b64=None, stream=True):
     return ollama.chat(
         model=model,
-        messages=[{"role":"user","content":prompt,"images": image_b64}],
-        stream=True               # <- returns a generator
+        messages=[{"role":"system", "content": system_prompt},
+                  {"role":"user", "content": prompt, "images": image_b64}],
+        stream=stream               # <- returns a generator
     )
 
 def image_to_base64(image):
@@ -307,8 +306,6 @@ def build_video_json(
     meta: Dict[str, Any],
     file_path: str,
     original_filename: str,
-    chunk_size: int = st.session_state.chunk_size,
-    overlap: int = st.session_state.chunk_overlap,
 ) -> Dict[str, Any]:
     """
     Перетворює розшифровку відео в структуру JSON для зберігання в Milvus,
@@ -317,7 +314,7 @@ def build_video_json(
     file_path = str(file_path)  # Перетворення шляху на рядок
     original_uuid = hashlib.sha256(txt.encode()).hexdigest()  # Створення унікального ID
     doc_id = f"vid_{meta['video_id']}"  # Детермінований ID
-    chunks = chunk_text(txt, size=chunk_size, overlap=overlap)  # Розбиття тексту на частини
+    chunks = chunk_text(txt)  # Розбиття тексту на частини
     upload_date = dt.now().isoformat()  # Поточна дата та час
 
     return {
@@ -410,31 +407,51 @@ def extract_from_csv(p, **kw):
 
 def prepare_text(text: Any) -> str:
     """
-    Підготовка тексту (DataFrame, dict, або інший тип) до обробки, перетворюючи його на чистий рядок
+    Підготовка тексту (DataFrame, dict, або інший тип) до обробки, 
+    перетворюючи його на чистий рядок. 
+    Для DataFrame і для рядкових CSV/TSV входів кожен рядок буде 
+    починатися з:
+    _____________"Новый рядок"__________________________________
+    Завжди повертається txt.strip().
     """
-    # 1) Якщо DataFrame — склеюємо всі комірки
+    prefix = '___________"Новый рядок"__________________________________'
+
+    # 1) Якщо DataFrame — обробляємо построково
     if isinstance(text, pd.DataFrame):
-        # об'єднуємо всі значення в один рядок
-        text = ' '.join(text.values.flatten().astype(str))  # Об'єднання всіх значень
-    # 2) Якщо dict — склеюємо всі значення
+        rows = [' '.join(text.iloc[i].astype(str).tolist())
+                for i in range(len(text))]
+        txt = '\n'.join(f'{prefix} {row}' for row in rows)
+
+    # 2) Якщо вхід — рядок із переносами (наприклад, CSV у вигляді рядка)
+    elif isinstance(text, str) and '\n' in text:
+        lines = [line for line in text.splitlines() if line.strip()]
+        txt = '\n'.join(f'{prefix} {line.strip()}' for line in lines)
+
+    # 3) Якщо dict — склеюємо всі значення в одну строку
     elif isinstance(text, dict):
-        text = ' '.join(str(v) for v in text.values())  # Об'єднання всіх значень
-    # 3) Якщо не рядок — приводимо до рядка
-    elif not isinstance(text, str):
-        text = str(text)  # Перетворення на рядок
+        txt = ' '.join(str(v) for v in text.values())
 
-    # 4) Очищаємо отриманий рядок
-    # видаляємо переведення рядків, табуляції та зайві пробіли
-    txt = text.replace('\r', ' ').replace('\n', ' ').replace('\t', ' ')  # Заміна спеціальних символів
-    txt = ' '.join(txt.split())  # прибираємо подвійні/зайві пробіли
+    # 4) Інші типи — приводимо до рядка
+    else:
+        if not isinstance(text, str):
+            txt = str(text)
+        else:
+            txt = text
+        # Очищаємо від зайвих пробілів і символів переходу
+        txt = txt.replace('\r', ' ').replace('\n', ' ').replace('\t', ' ')
+        txt = ' '.join(txt.split())
 
-    return txt.strip()  # Повернення очищеного рядка
+    return txt.strip()
 
-def chunk_text(text: str, size=st.session_state.chunk_size, overlap=st.session_state.chunk_overlap):
+
+
+
+def chunk_text(text: str):
+    
     """Розбиває текст на частини вказаного розміру з перекриттям для кращого пошуку"""
     splitter = RecursiveCharacterTextSplitter(
-        chunk_size=size,  # Розмір частини
-        chunk_overlap=overlap,  # Перекриття між частинами
+        chunk_size=st.session_state.chunk_size,  # Розмір частини
+        chunk_overlap=st.session_state.chunk_overlap,  # Перекриття між частинами
         length_function=len,  # Функція для визначення довжини
         is_separator_regex=False  # Без використання регулярних виразів
     )
@@ -547,8 +564,6 @@ def build_audio_json(
     meta: Dict[str, Any],
     file_path: str,
     original_filename: str,
-    chunk_size: int = st.session_state.chunk_size,
-    overlap: int = st.session_state.chunk_overlap,
 ) -> Dict[str, Any]:
     """
     Формирует единый JSON для аудио:
@@ -559,7 +574,7 @@ def build_audio_json(
     file_path = str(file_path)
     original_uuid = hashlib.sha256(txt.encode()).hexdigest()
     doc_id = f"aud_{meta['unique_audio_id']}"
-    chunks = chunk_text(txt, size=chunk_size, overlap=overlap)
+    chunks = chunk_text(txt)
 
     return {
         "doc_id": doc_id,
@@ -707,9 +722,9 @@ def chat_audio_mode(collection_name, llm_option):
     placeholder = st.empty()
 
     # ввод користувача
-    if q := st.chat_input("Ваш запит"):
-        st.session_state.messages.append(dict(role="user", content=q))
-        with st.chat_message("user"): st.markdown(q)
+    if query:= st.chat_input("Ваш запит"):
+        st.session_state.messages.append(dict(role="user", content=query))
+        with st.chat_message("user"): st.markdown(query)
         with st.chat_message("assistant"):
             st.write("Шукаю відповідь…")
             dense_ef = create_bge_m3_embeddings()
@@ -718,9 +733,16 @@ def chat_audio_mode(collection_name, llm_option):
             collection_name=collection_name,
             dense_embedding_function=dense_ef,) 
             retr.build_collection()
-            chunks = retr.search(q, mode="hybrid", k=st.session_state.ret_k_results)
-            ctx = "\n---\n".join([c["content"] for c in chunks]) if chunks else ""
-            user_query = q+"\n---\n"+ctx
+            raw_results = retr.search(query, mode="hybrid", k=st.session_state.ret_k_results)
+            docs_for_ranker = [d["content"] for d in raw_results]
+            reranked = rerank_search(docs_for_ranker, query, st.session_state.ret_k_results)
+            result = [raw_results[r.index] for r in reranked ]
+
+            if not reranked:  # Якщо результати не знайдені
+                answer = "На жаль, не знайшов релевантної інформації."
+            else:
+                ctx = "\n---\n".join([c.text for c in reranked])
+                user_query = query+"\n---\n"+ctx
             if llm_option == "Україномовну":
                     # Формуємо єдиний рядок для генерації
                     system = UKR_SYSTEM_PROMPT
@@ -737,9 +759,9 @@ def chat_audio_mode(collection_name, llm_option):
             else:   
                 placeholder = st.empty()
                 answer = ""
-                prompt = create_stream_prompt(st.session_state.system_prompt, q, ctx)
+                prompt = create_stream_prompt(query, ctx)
                 model = st.session_state.llm_option
-                for part in query_ollama(prompt, model):
+                for part in query_ollama(st.session_state.system_prompt, prompt, model):
                     chunk = part["message"]["content"]
                     # по‑символьно додаємо та одразу оновлюємо плейсхолдер
                     for ch in chunk:
@@ -747,7 +769,7 @@ def chat_audio_mode(collection_name, llm_option):
                         placeholder.text(answer)   # або .markdown(caption)
 
             with st.expander("Показати використаний контекст"):
-                for i in chunks:
+                for i in result:
                         st.markdown(
                             f"**Файл:** {i['file_name']}  \n"
                             f"**Chunk ID:** `{i['chunk_id']}`  \n"
@@ -755,7 +777,7 @@ def chat_audio_mode(collection_name, llm_option):
                             f"**Score:** {i['score']:.4f}  \n\n"
                             f"> {i['content']}",
                         )
-            log_interaction(st.session_state.current_mode, q, answer)
+            log_interaction(st.session_state.current_mode, query, answer)
             st.session_state.messages.append(dict(role="assistant", content=answer))
 
 def video_mode(collection_name: str, summary: bool):
@@ -830,10 +852,10 @@ def chat_video_mode(collection_name, llm_option):
 
     # ввод користувача
  
-    if q := st.chat_input("Ваш запит"):
+    if query:= st.chat_input("Ваш запит"):
      
-        st.session_state.messages.append(dict(role="user", content=q))
-        with st.chat_message("user"): st.markdown(q)
+        st.session_state.messages.append(dict(role="user", content=query))
+        with st.chat_message("user"): st.markdown(query)
         with st.chat_message("assistant"):
             st.write("Шукаю відповідь…")
             dense_ef = create_bge_m3_embeddings()
@@ -842,16 +864,16 @@ def chat_video_mode(collection_name, llm_option):
             collection_name=collection_name,
             dense_embedding_function=dense_ef,) 
             retr.build_collection()
-            chunks = retr.search(q, mode="hybrid", k=st.session_state.ret_k_results)
-            ctx = "\n---\n".join([c["content"] for c in chunks]) if chunks else ""
-            user_query = q+"\n---\n"+ctx
-            #if llm_option == "Україномовну":
-            #    chat = [
-            #        {"role": "system", "content": "You are useful assistant. Use the info to answer user query. Answer in Ukrainian"},
-            #        {"role": "user", "content": user_query}
-            #        ]
-            #    response = st.session_state.ukr_generator(chat, max_new_tokens=512)
-            #    answer = response[0]["generated_text"][-1]["content"]
+            raw_results = retr.search(query, mode="hybrid", k=st.session_state.ret_k_results)
+            docs_for_ranker = [d["content"] for d in raw_results]
+            reranked = rerank_search(docs_for_ranker, query, st.session_state.ret_k_results)
+            result = [raw_results[r.index] for r in reranked ]
+
+            if not reranked:  # Якщо результати не знайдені
+                answer = "На жаль, не знайшов релевантної інформації."
+            else:
+                ctx = "\n---\n".join([c.text for c in reranked])
+                user_query = query+"\n---\n"+ctx
             if llm_option == "Україномовну":
                     # Формуємо єдиний рядок для генерації
                     system = UKR_SYSTEM_PROMPT
@@ -868,16 +890,16 @@ def chat_video_mode(collection_name, llm_option):
             else:   
                 placeholder = st.empty()
                 answer = ""
-                prompt = create_stream_prompt(st.session_state.system_prompt, q, ctx)
+                prompt = create_stream_prompt(query, ctx)
                 model = st.session_state.llm_option
-                for part in query_ollama(prompt, model):
+                for part in query_ollama(st.session_state.system_prompt, prompt, model):
                     chunk = part["message"]["content"]
                     # по‑символьно додаємо та одразу оновлюємо плейсхолдер
                     for ch in chunk:
                         answer += ch
                         placeholder.text(answer)   # або .markdown(caption)
             with st.expander("Показати використаний контекст"):
-                for i in chunks:
+                for i in result:
                         st.markdown(
                             f"**Файл:** {i['file_name']}  \n"
                             f"**Chunk ID:** `{i['chunk_id']}`  \n"
@@ -885,7 +907,7 @@ def chat_video_mode(collection_name, llm_option):
                             f"**Score:** {i['score']:.4f}  \n\n"
                             f"> {i['content']}",
                         )
-            log_interaction(st.session_state.current_mode, q, answer)
+            log_interaction(st.session_state.current_mode, query, answer)
             st.session_state.messages.append(dict(role="assistant", content=answer))
 
 def image_mode(collection_name, summary = True):
@@ -915,7 +937,7 @@ def image_mode(collection_name, summary = True):
 
                 # ollama.chat(..., stream=True) повертає генератор,
                 #   у part["message"]["content"] — черговий фрагмент тексту
-                for part in query_ollama(prompt, IMAGE_DESCRIPTION_MODEL, img_b64):
+                for part in query_ollama(st.session_state.system_prompt, prompt, IMAGE_DESCRIPTION_MODEL, img_b64):
                     chunk = part["message"]["content"]
                     # по‑символьно додаємо та одразу оновлюємо плейсхолдер
                     for ch in chunk:
@@ -1001,10 +1023,10 @@ def chat_image_mode(collection_name, llm_option):
     placeholder = st.empty()
 
     # Ввод пользователя
-    if q := st.chat_input("Ваш запит"):
-        st.session_state.messages.append(dict(role="user", content=q))
+    if query:= st.chat_input("Ваш запит"):
+        st.session_state.messages.append(dict(role="user", content=query))
         with st.chat_message("user"): 
-            st.markdown(q)
+            st.markdown(query)
         with st.chat_message("assistant"):
             st.write("Шукаю відповідь…")
             dense_ef = create_bge_m3_embeddings()
@@ -1015,12 +1037,16 @@ def chat_image_mode(collection_name, llm_option):
                 dense_embedding_function=dense_ef,
             )
             retriever.build_collection()
-            results = retriever.search(q, mode="hybrid", k=st.session_state.ret_k_results)
-            if not results:
+            raw_results = retriever.search(query, mode="hybrid", k=st.session_state.ret_k_results)
+            docs_for_ranker = [d["content"] for d in raw_results]
+            reranked = rerank_search(docs_for_ranker, query, st.session_state.ret_k_results)
+            result = [raw_results[r.index] for r in reranked ]
+
+            if not reranked:  # Якщо результати не знайдені
                 answer = "На жаль, не знайшов релевантної інформації."
             else:
-                ctx = "\n---\n".join([c["content"] for c in results]) if results else ""
-                user_query = q+"\n---\n"+ctx
+                ctx = "\n---\n".join([c.text for c in reranked])
+                user_query = query+"\n---\n"+ctx
                 if llm_option == "Україномовну":
                         # Формуємо єдиний рядок для генерації
                         system = UKR_SYSTEM_PROMPT
@@ -1037,16 +1063,16 @@ def chat_image_mode(collection_name, llm_option):
                 else:
                     placeholder = st.empty()
                     answer = ""
-                    prompt = create_stream_prompt(st.session_state.system_prompt, q, ctx)
+                    prompt = create_stream_prompt(query, ctx)
                     model = st.session_state.llm_option
-                    for part in query_ollama(prompt, model):
+                    for part in query_ollama(st.session_state.system_prompt, prompt, model):
                         chunk = part["message"]["content"]
                         # по‑символьно додаємо та одразу оновлюємо плейсхолдер
                         for ch in chunk:
                             answer += ch
                             placeholder.text(answer)   # або .markdown(caption)
                 with st.expander("Показати використаний контекст"):
-                    for i in results:
+                    for i in result:
                             st.markdown(
                                 f"**Файл:** {i['file_name']}  \n"
                                 f"**Chunk ID:** `{i['chunk_id']}`  \n"
@@ -1054,7 +1080,7 @@ def chat_image_mode(collection_name, llm_option):
                                 f"**Score:** {i['score']:.4f}  \n\n"
                                 f"> {i['content']}",
                             )
-                log_interaction(st.session_state.current_mode, q, answer)
+                log_interaction(st.session_state.current_mode, query, answer)
                 st.session_state.messages.append(dict(role="assistant", content=answer))
                 
 
@@ -1107,12 +1133,16 @@ def main_chat(collection_name):
                     }
 
                 retriever.upsert_data(answer, metadata)
-            results = retriever.search(query, mode="hybrid", k=st.session_state.ret_k_results)
-            if not results:  # Якщо результати не знайдені
+            raw_results = retriever.search(query, mode="hybrid", k=st.session_state.ret_k_results)
+            docs_for_ranker = [d["content"] for d in raw_results]
+            reranked = rerank_search(docs_for_ranker, query, st.session_state.ret_k_results)
+            result = [raw_results[r.index] for r in reranked ]
+
+            if not reranked:  # Якщо результати не знайдені
                 answer = "На жаль, не знайшов релевантної інформації."
             else:
-                best = "\n".join(r["content"] for r in results) if results else ""
-                user_query = query+"\n---\n"+best  # Формування запиту з контекстом
+                ctx = "\n---\n".join([c.text for c in reranked])
+                user_query = query+"\n---\n"+ctx  # Формування запиту з контекстом
                 if st.session_state.llm_option == "Україномовну":  # Якщо вибрана україномовна модель
                     chat = [
                         {"role": "system", "content": "You are useful assistant. Use the info to answer user query. Answer in Ukrainian"},
@@ -1124,16 +1154,16 @@ def main_chat(collection_name):
                 # Формування промпту та виклик LLM
                     placeholder = st.empty()
                     answer = ""
-                    prompt = create_stream_prompt(st.session_state.system_prompt, query, best)
+                    prompt = create_stream_prompt(query, ctx)
                     model = st.session_state.llm_option
-                    for part in query_ollama(prompt, model):
+                    for part in query_ollama(st.session_state.system_prompt, prompt, model):
                         chunk = part["message"]["content"]
                         # по‑символьно додаємо та одразу оновлюємо плейсхолдер
                         for ch in chunk:
                             answer += ch
                             placeholder.text(answer) 
             with st.expander("Показати використаний контекст"):  # Створення розгортаємого блоку
-                    for i in results:
+                    for i in result:
                         st.markdown(
                             f"**Файл:** {i['file_name']}  \n"  # Відображення імені файлу
                             f"**Chunk ID:** `{i['chunk_id']}`  \n"  # Відображення ID фрагмента
@@ -1185,10 +1215,7 @@ def document_mode(collection_name, summary):
         # Показуємо повідомлення про успішне збереження
         st.success(f"Файл {original_filename} успішно збережено як {file_path}")
         raw = data_extraction(file_path)
-        raw_str = raw.to_csv(index=False) if isinstance(raw, pd.DataFrame) else (
-        json.dumps(raw, ensure_ascii=False) if isinstance(raw, dict) else str(raw)
-    )
-        txt = prepare_text(raw_str)
+        txt = prepare_text(raw)
         st.markdown(f"**Перші 1000 символів файлу:** \n\n {txt[:1000]}")
         st.session_state.document_context_text['context'] = ""
         if summary and not st.session_state.document_context_text['context']:
@@ -1267,13 +1294,17 @@ def chat_document_mode(collection_name, llm_option):
             )
             retriever.build_collection()          # ← додали
             # Ищем 5 наиболее похожих чанков
-            results = retriever.search(query, mode="hybrid", k=st.session_state.ret_k_results)
-            if not results:
+            raw_results = retriever.search(query, mode="hybrid", k=st.session_state.ret_k_results)
+            docs_for_ranker = [d["content"] for d in raw_results]
+            reranked = rerank_search(docs_for_ranker, query, st.session_state.ret_k_results)
+            result = [raw_results[r.index] for r in reranked ]
+
+            if not reranked:  # Якщо результати не знайдені
                 answer = "На жаль, не знайшов релевантної інформації."
             else:
                 best = ""
-                for i in results:
-                    best += i["content"]
+                for i in reranked:
+                    best += i.text
                 # Формируем промпт и вызываем LLM
                 prompt = create_prompt(st.session_state.system_prompt)
                 if llm_option == "Україномовну":
@@ -1289,9 +1320,9 @@ def chat_document_mode(collection_name, llm_option):
                 else:   
                     placeholder = st.empty()
                     answer = ""
-                    prompt = create_stream_prompt(st.session_state.system_prompt, query, best)
+                    prompt = create_stream_prompt(query, best)
                     model = st.session_state.llm_option
-                    for part in query_ollama(prompt, model):
+                    for part in query_ollama(st.session_state.system_prompt, prompt, model):
                         chunk = part["message"]["content"]
                         chunk = remove_think(chunk)
                         for ch in chunk:
@@ -1299,13 +1330,13 @@ def chat_document_mode(collection_name, llm_option):
                             placeholder.text(answer)   # або .markdown(caption)
             
             with st.expander("Показати використаний контекст"):
-                        for i in results:
-                            st.markdown(
-                                f"**Файл:** {i['file_name']}  \n"
-                                f"**Chunk ID:** `{i['chunk_id']}`  \n"
-                                f"**Дата завантаження:** {results[0]['upload_date']}  \n"
-                                f"**Score:** {i['score']:.4f}  \n\n"
-                                f"> {i['content']}"
+                for i in result:
+                    st.markdown(
+                        f"**Файл:** {i['file_name']}  \n"
+                        f"**Chunk ID:** `{i['chunk_id']}`  \n"
+                        f"**Дата завантаження:** {i['upload_date']}  \n"
+                        f"**Score:** {i['score']:.4f}  \n\n"
+                        f"> {i['content']}"
                             )
             st.session_state.messages.append({"role": "assistant", "content": answer})
             log_interaction(st.session_state.current_mode or "chat", query, answer)

@@ -2,27 +2,29 @@
 from transformers import AutoModelForCausalLM, GenerationConfig
 import streamlit as st  # Для створення інтерактивного веб-інтерфейсу
 import os  # Для роботи з файловою системою та операційною системою
-import uuid  # Для генерації унікальних ідентифікаторів для файлів та сесій
-import logging  # Для логування подій та помилок у програмі
-from functions import *  # Імпорт усіх допоміжних функцій з модуля functions
-import whisper  # Бібліотека для розпізнавання мови в аудіофайлах
-from rag import *  # Імпорт усіх функцій для роботи з системою пошуку та отримання інформації (RAG) з Milvus
+from functions import reset_chat, create_ukr_llm, create_bge_m3_embeddings, main_chat, on_summarise_audio, on_summarise_video, on_summarise_image, on_summarise_document, document_mode, chat_document_mode, video_mode, chat_audio_mode, chat_image_mode, chat_video_mode, image_mode, audio_mode, video_mode# Імпорт усіх допоміжних функцій з модуля functions
+from rag import  HybridRetriever, ImageHybridRetriever, VideoHybridRetriever # Імпорт усіх функцій для роботи з системою пошуку та отримання інформації (RAG) з Milvus
 from pymilvus import MilvusClient, DataType, connections, FieldSchema, MilvusException  # Компоненти для роботи з векторною базою даних Milvus
 from datetime import datetime  # Для роботи з датами та часом, зокрема для логування
-
+from threading import Thread
+import torch
 from IPython.display import Markdown, display  # Для відображення форматованого тексту в Jupyter Notebook
 import pandas as pd  # Для роботи з табличними даними
-import yt_dlp  # Для завантаження відео з YouTube та інших платформ
-import hashlib  # Для створення хешів файлів для унікальної ідентифікації
-from config import *  # Імпорт усіх змінних та констант з конфігураційного файлу
+from config import CHUNK_SIZE, OVERLAP, RET_K_RESULTS, RELIGIOUS_SYSTEM_PROMPT, APP_DESCRIPTION, REGULAR_SYSTEM_PROMPT  # Імпорт усіх змінних та констант з конфігураційного файлу
 from docx import Document as DocxDocument  # Для роботи з документами формату .docx
-from PIL import Image  # Для обробки та аналізу зображень
-
 # Ініціалізація режиму роботи додатку, якщо він ще не встановлений
 if "mode" not in st.session_state: st.session_state.mode = "menu"
 # Створення директорії для збереження даних, якщо вона не існує
 if not os.path.exists("data"):
     os.makedirs("data")
+import asyncio # Додайте цей імпорт
+import teleg
+import logging 
+logger = logging.getLogger(__name__)
+
+from threading import Thread, Lock # Додано Lock
+import telegram
+
 
 # Ініціалізація змінних стану сесії
 # Кожна змінна відповідає за певний стан інтерфейсу або зберігає дані між взаємодіями
@@ -92,15 +94,16 @@ if 'video_context_text' not in st.session_state:
     st.session_state.video_context_text = {'context': ''}  # Зберігає контекст для відео
 if 'document_context_text' not in st.session_state:
     st.session_state.document_context_text = {'context': ''}  # Зберігає контекст для документів
-
+if 'telegram_mode' not in st.session_state:
+    st.session_state.telegram_mode = False  # Прапорець вибору режиму Telegram
 if 'audio_context_text' not in st.session_state:
     st.session_state.audio_context_text = {'context': ''}  # Зберігає контекст для аудіо
 if 'chunk_size' not in st.session_state:
-    st.session_state.chunk_size = 0
+    st.session_state.chunk_size = CHUNK_SIZE
 if 'chunk_overlap' not in st.session_state:
-    st.session_state.chunk_overlap = 0
+    st.session_state.chunk_overlap = OVERLAP
 if 'ret_k_results' not in st.session_state:
-    st.session_state.ret_k_results = 0
+    st.session_state.ret_k_results = RET_K_RESULTS
 if 'video_summary' not in st.session_state:
     st.session_state.video_summary = False  # Прапорець відображення узагальненої інформації
 if 'audio_summary' not in st.session_state:
@@ -119,6 +122,7 @@ def select_database():
     """Функція для вибору бази даних та скидання інших станів.
     Скидає стан чату, вимикає опис та встановлює прапорець вибору бази даних,
     одночасно скидаючи інші прапорці вибору."""
+    teleg.stop_telegram_bot() 
     reset_chat()  # Скидання стану чату
     st.session_state.description = False  # Вимкнення опису
     st.session_state.database_selected = True  # Встановлення прапорця вибору бази даних
@@ -126,12 +130,14 @@ def select_database():
     st.session_state.video_selected = False  # Скидання прапорця вибору відео
     st.session_state.image_selected = False  # Скидання прапорця вибору зображення
     st.session_state.start_chat = False  # Скидання прапорця початку чату
+    st.session_state.telegram_mode = False
 
 
 def select_document():
     """Функція для вибору режиму роботи з документами.
     Скидає стан чату, вимикає опис, встановлює поточний режим роботи
     та відповідні прапорці для роботи з документами."""
+    teleg.stop_telegram_bot() 
     reset_chat()  # Скидання стану чату
     st.session_state.description = False  # Вимкнення опису
     st.session_state.current_mode = "document_mode"  # Встановлення поточного режиму
@@ -142,12 +148,14 @@ def select_document():
     st.session_state.database_selected = False  # Скидання прапорця вибору бази даних
     st.session_state.document_processed = False  # Скидання прапорця обробки документа
     st.session_state.audio_selected = False  # Скидання прапорця обробки аудіо
+    st.session_state.telegram_mode = False
   # Скидання прапорця обробки зображення
 
 def select_video():
     """Функція для вибору режиму роботи з відео.
     Скидає стан чату, вимикає опис, встановлює поточний режим роботи
     та відповідні прапорці для роботи з відео."""
+    teleg.stop_telegram_bot() 
     reset_chat()  # Скидання стану чату
     st.session_state.description = False  # Вимкнення опису
     st.session_state.current_mode = "video_mode"  # Встановлення поточного режиму
@@ -158,11 +166,15 @@ def select_video():
     st.session_state.database_selected = False  # Скидання прапорця вибору бази даних
     st.session_state.video_processed = False 
     st.session_state.audio_selected = False  # Скидання прапорця обробки аудіо
+    st.session_state.telegram_mode = False
+
 
 def select_image():
+    
     """Функція для вибору режиму роботи з зображеннями.
     Скидає стан чату, вимикає опис, встановлює поточний режим роботи
     та відповідні прапорці для роботи з зображеннями."""
+    teleg.stop_telegram_bot() 
     reset_chat()  # Скидання стану чату
     st.session_state.description = False  # Вимкнення опису
     st.session_state.current_mode = "image_mode"  # Встановлення поточного режиму
@@ -173,12 +185,15 @@ def select_image():
     st.session_state.database_selected = False  # Скидання прапорця вибору бази даних
     st.session_state.image_processed = False
     st.session_state.audio_selected = False  # Скидання прапорця обробки зображення
+    st.session_state.telegram_mode = False
 
 def select_audio():
     """Функція для вибору режиму роботи з аудіо.
     Скидає стан чату, вимикає опис, встановлює поточний режим роботи
     та відповідні прапорці для роботи з аудіо."""
+    teleg.stop_telegram_bot() 
     reset_chat()  # Скидання стану чату
+
     st.session_state.description = False  # Вимкнення опису
     st.session_state.current_mode = "audio_mode"  # Встановлення поточного режиму
     st.session_state.document_selected = False  # Скидання прапорця вибору документа
@@ -188,7 +203,7 @@ def select_audio():
     st.session_state.start_chat = False  # Скидання прапорця початку чату
     st.session_state.database_selected = False  # Скидання прапорця вибору бази даних
     st.session_state.image_processed = False  # Скидання прапорця обробки зображення
-
+    st.session_state.telegram_mode = False
 
 def start_chat():
     """Функція для запуску режиму чату.
@@ -203,6 +218,76 @@ def start_chat():
     st.session_state.image_selected = False  # Скидання прапорця вибору зображення
     st.session_state.database_selected = False  # Скидання прапорця вибору бази даних
     st.session_state.audio_selected = False  # Скидання прапорця вибору аудіо
+    st.session_state.telegram_mode = False
+
+
+
+
+def start_telegram_service():
+    st.session_state.telegram_mode = True
+    logger.info("Спроба запуску сервісу Telegram-бота...")
+
+    try:
+        current_collection_name = st.session_state.collection_name
+        current_llm_option = st.session_state.llm_option
+        current_ret_k_results = st.session_state.ret_k_results
+        current_system_prompt = st.session_state.system_prompt
+        current_client = st.session_state.milvus_client # Це об'єкт MilvusClient
+    except KeyError as e: # Краще KeyError для відсутніх ключів у session_state
+        st.error(f"Помилка: Одне з необхідних значень (collection_name, llm_option, ret_k_results, system_prompt, milvus_client) не ініціалізовано в st.session_state. Деталі: {e}")
+        logger.error(f"Не вдалося запустити бота: відсутні ключі в st.session_state. Помилка: {e}")
+        return
+    
+    if not current_collection_name:
+        st.error("Будь ласка, спочатку введіть та підтвердіть назву колекції в бічній панелі.")
+        logger.error("Не вдалося запустити бота: collection_name порожнє або не підтверджене.")
+        return
+
+    # Використовуємо глобальну змінну _telegram_bot_thread з модуля teleg
+    if teleg._telegram_bot_thread is not None and teleg._telegram_bot_thread.is_alive():
+        st.warning("Telegram-бот вже запущено і працює.")
+        logger.warning("Спроба запуску, але бот вже активний.")
+        return
+
+    if teleg._telegram_bot_thread is not None and not teleg._telegram_bot_thread.is_alive():
+        logger.info("Попередній потік бота знайдено, але він неактивний. Запуск нового.")
+        teleg._telegram_bot_thread = None # Очищаємо посилання на старий, мертвий потік
+
+    st.info(f"Запуск Telegram-бота з колекцією: {current_collection_name}, LLM: {current_llm_option}, K-результатів: {current_ret_k_results}, Системний промт: '{current_system_prompt[:70]}...', Клієнт Milvus: {type(current_client)}")
+    logger.info("start_telegram_service: Підготовка до запуску потоку бота.")
+
+    def bot_thread_target_with_args(default_collection, default_llm, default_k, default_system_prompt, default_milvus_client_obj):
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        thread_id = Thread.native_id 
+        logger.info(f"Потік бота ({thread_id}): Новий цикл подій створено та встановлено.")
+        try:
+            logger.info(f"Потік бота ({thread_id}): Виклик teleg.main з налаштуваннями: колекція='{default_collection}', llm='{default_llm}', k='{default_k}', client_obj='{type(default_milvus_client_obj)}'")
+            # Передаємо сам об'єкт клієнта Milvus
+            teleg.main(
+                default_collection=default_collection,
+                default_llm=default_llm,
+                default_k_results=default_k,
+                default_system_prompt=default_system_prompt,
+                default_client=default_milvus_client_obj # Передаємо об'єкт
+            )
+        except telegram.error.Conflict as e_conflict:
+            logger.error(f"Потік бота ({thread_id}): Telegram Conflict Error: {e_conflict}. Ймовірно, інший екземпляр вже запущено.")
+        except Exception as e_thread:
+            logger.error(f"Потік бота ({thread_id}): Непередбачена помилка: {e_thread}", exc_info=True)
+        finally:
+            logger.info(f"Потік бота ({thread_id}): Цикл опитування завершено або виникла помилка.")
+
+    new_bot_thread = Thread(
+        target=bot_thread_target_with_args,
+        args=(current_collection_name, current_llm_option, current_ret_k_results, current_system_prompt, current_client), # Передаємо об'єкт current_client
+        daemon=True
+    )
+    teleg._telegram_bot_thread = new_bot_thread # Присвоюємо новостворений потік глобальній змінній в модулі teleg
+    teleg._telegram_bot_thread.start()
+    logger.info(f"start_telegram_service: Потік Telegram-бота ({teleg._telegram_bot_thread.native_id}) запущено.")
+    st.success("Telegram-бот запущено у фоновому режимі!")
+
 
 def stop_chat():
     """Функція для зупинки режиму чату.
@@ -290,11 +375,13 @@ with st.sidebar:
         st.button("Обробка зображення",on_click=select_image,   key="btn_img")  # Кнопка для обробки зображення
         st.button("Обробка аудіо", on_click=select_audio,   key="btn_audio")  # Кнопка для обробки аудіо
         st.button("Почати діалог", on_click=start_chat,     key="btn_chat")  # Кнопка для початку діалогу
+        st.button("Запустити Telegram-бота", on_click=start_telegram_service, key="btn_telegram_service")
         st.divider()  # Розділювач
         st.write(f"Поточний режим: {st.session_state.current_mode}")  # Відображення поточного режиму
 
+
 # Відображення вибраної колекції
-st.markdown(f"Ви обрали колекцію {collection_name}")
+st.markdown(f"Ви обрали колекцію {collection_name} \n\nрозмір чанка {st.session_state.chunk_size}\nрозмір пересікання {st.session_state.chunk_overlap}\n\n кількість відповідей {st.session_state.ret_k_results}\n")
 print(torch.cuda.is_available(), 'cuda')
 # Режим чату
 if st.session_state.start_chat:
